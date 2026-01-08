@@ -43,6 +43,7 @@ interface SortableItemProps {
   onDeleteTransaction: (id: string) => void;
   setEditingNames: (names: Record<string, string>) => void;
   setEditingValues: (values: Record<string, string | number>) => void;
+  isIncome?: boolean;
 }
 
 function SortableItem({
@@ -58,6 +59,7 @@ function SortableItem({
   onDeleteTransaction,
   setEditingNames,
   setEditingValues,
+  isIncome = false,
 }: SortableItemProps) {
   const {
     attributes,
@@ -85,7 +87,7 @@ function SortableItem({
       style={style}
       className="border-b border-gray-100 last:border-0"
     >
-      <div className="grid grid-cols-12 gap-4 items-center py-2 rounded">
+      <div className="grid grid-cols-10 gap-4 items-center py-2 rounded">
         <div className="col-span-5 flex items-center gap-2">
           {isEditing && (
             <button
@@ -196,7 +198,7 @@ function SortableItem({
                 e.currentTarget.blur();
               }
             }}
-            className="w-full text-right px-2 py-1 border border-transparent hover:bg-gray-50 focus:border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={`w-full text-right px-2 py-1 border border-transparent hover:bg-gray-50 focus:border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${isIncome && editingValues[item.id] === undefined ? 'blur-sm' : ''}`}
           />
         </div>
         <div className="col-span-2">
@@ -204,11 +206,11 @@ function SortableItem({
             ${item.actual.toFixed(2)}
           </div>
         </div>
-        <div className="col-span-2 text-right">
+        {/* <div className="col-span-2 text-right">
           <span className={difference < 0 ? "text-red-600" : "text-green-600"}>
             ${Math.abs(difference).toFixed(2)}
           </span>
-        </div>
+        </div> */}
         <div className="col-span-1 flex items-center justify-end gap-1">
           <button
             onClick={() => onOpenTransaction(item.id, item.name)}
@@ -473,11 +475,11 @@ export default function BudgetSection({
 
           {category.items.length > 0 && (
             <div className="space-y-2">
-              <div className="grid grid-cols-12 gap-4 text-sm font-semibold text-gray-600 pb-2 border-b">
+              <div className="grid grid-cols-10 gap-4 text-sm font-semibold text-gray-600 pb-2 border-b">
                 <div className="col-span-5">Item</div>
                 <div className="col-span-2 text-right">Planned</div>
                 <div className="col-span-2 text-right">Actual</div>
-                <div className="col-span-2 text-right">Difference</div>
+                {/* <div className="col-span-2 text-right">Difference</div> */}
                 <div className="col-span-1"></div>
               </div>
 
@@ -507,6 +509,7 @@ export default function BudgetSection({
                       onDeleteTransaction={deleteTransaction}
                       setEditingNames={setEditingNames}
                       setEditingValues={setEditingValues}
+                      isIncome={isIncome}
                     />
                   ))}
                 </SortableContext>

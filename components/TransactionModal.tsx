@@ -21,6 +21,10 @@ export default function TransactionModal({
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [type, setType] = useState<'income' | 'expense'>('expense');
+  const [merchant, setMerchant] = useState('');
+  const [account, setAccount] = useState('');
+  const [checkNumber, setCheckNumber] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,11 +36,19 @@ export default function TransactionModal({
       description: description.trim(),
       amount: parseFloat(amount),
       budgetItemId,
+      type,
+      merchant: merchant.trim() || undefined,
+      account: account.trim() || undefined,
+      checkNumber: checkNumber.trim() || undefined,
     });
 
     setDescription('');
     setAmount('');
     setDate(new Date().toISOString().split('T')[0]);
+    setType('expense');
+    setMerchant('');
+    setAccount('');
+    setCheckNumber('');
     onClose();
   };
 
@@ -53,6 +65,34 @@ export default function TransactionModal({
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Type
+            </label>
+            <div className="flex gap-4">
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  value="expense"
+                  checked={type === 'expense'}
+                  onChange={(e) => setType(e.target.value as 'expense')}
+                  className="mr-2"
+                />
+                <span className="text-sm text-gray-700">Expense</span>
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  value="income"
+                  checked={type === 'income'}
+                  onChange={(e) => setType(e.target.value as 'income')}
+                  className="mr-2"
+                />
+                <span className="text-sm text-gray-700">Income</span>
+              </label>
+            </div>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Date
@@ -75,10 +115,24 @@ export default function TransactionModal({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               onFocus={(e) => e.target.select()}
-              placeholder="e.g., Shell Gas Station"
+              placeholder="e.g., Grocery shopping"
               className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
               autoFocus
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Merchant <span className="text-gray-400 text-xs">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={merchant}
+              onChange={(e) => setMerchant(e.target.value)}
+              onFocus={(e) => e.target.select()}
+              placeholder="e.g., Costco Whse"
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
@@ -99,6 +153,34 @@ export default function TransactionModal({
                 required
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Account <span className="text-gray-400 text-xs">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={account}
+              onChange={(e) => setAccount(e.target.value)}
+              onFocus={(e) => e.target.select()}
+              placeholder="e.g., Checking *1234"
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Check # <span className="text-gray-400 text-xs">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={checkNumber}
+              onChange={(e) => setCheckNumber(e.target.value)}
+              onFocus={(e) => e.target.select()}
+              placeholder="e.g., 1234"
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
 
           <div className="flex gap-3 mt-6">

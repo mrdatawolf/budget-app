@@ -4,6 +4,10 @@ export interface Transaction {
   description: string;
   amount: number;
   budgetItemId: string;
+  type: 'income' | 'expense';
+  merchant?: string;
+  account?: string;
+  checkNumber?: string;
 }
 
 export interface BudgetItem {

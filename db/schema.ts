@@ -32,6 +32,10 @@ export const transactions = sqliteTable('transactions', {
   date: text('date').notNull(),
   description: text('description').notNull(),
   amount: real('amount').notNull(),
+  type: text('type').notNull().$type<'income' | 'expense'>(),
+  merchant: text('merchant'),
+  account: text('account'),
+  checkNumber: text('check_number'),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
 });
 

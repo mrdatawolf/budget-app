@@ -5,9 +5,9 @@ import { eq } from 'drizzle-orm';
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { budgetItemId, date, description, amount } = body;
+  const { budgetItemId, date, description, amount, type, merchant, account, checkNumber } = body;
 
-  if (!budgetItemId || !date || !description || amount === undefined) {
+  if (!budgetItemId || !date || !description || amount === undefined || !type) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
@@ -18,6 +18,10 @@ export async function POST(request: NextRequest) {
       date,
       description,
       amount,
+      type,
+      merchant: merchant || null,
+      account: account || null,
+      checkNumber: checkNumber || null,
     })
     .returning();
 
