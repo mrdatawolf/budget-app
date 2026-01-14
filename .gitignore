@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# certificates
+/certificates/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
@@ -45,3 +48,6 @@ budget.db
 budget.db-shm
 budget.db-wal
 drizzle/
+
+# Claude Code
+.claude/

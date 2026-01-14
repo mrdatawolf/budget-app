@@ -1,3 +1,6 @@
+import Link from 'next/link';
+import { FaCog } from 'react-icons/fa';
+
 interface BudgetHeaderProps {
   month: number;
   year: number;
@@ -30,22 +33,32 @@ export default function BudgetHeader({ month, year, onMonthChange }: BudgetHeade
     <div className="bg-white rounded-lg shadow-sm p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-gray-900">Zero-Based Budget</h1>
-        <div className="flex items-center gap-4">
-          <button
-            onClick={handlePrevMonth}
-            className="px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+        <div className="flex items-center gap-6">
+          <Link
+            href="/settings"
+            className="flex items-center gap-2 text-gray-500 hover:text-gray-700 transition-colors"
+            title="Settings"
           >
-            ←
-          </button>
-          <div className="text-xl font-semibold text-gray-900 min-w-[200px] text-center">
-            {months[month]} {year}
+            <FaCog />
+            <span className="text-sm">Settings</span>
+          </Link>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handlePrevMonth}
+              className="px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+            >
+              ←
+            </button>
+            <div className="text-xl font-semibold text-gray-900 min-w-[200px] text-center">
+              {months[month]} {year}
+            </div>
+            <button
+              onClick={handleNextMonth}
+              className="px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+            >
+              →
+            </button>
           </div>
-          <button
-            onClick={handleNextMonth}
-            className="px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
-          >
-            →
-          </button>
         </div>
       </div>
     </div>

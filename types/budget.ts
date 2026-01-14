@@ -3,11 +3,15 @@ export interface Transaction {
   date: string;
   description: string;
   amount: number;
-  budgetItemId: string;
+  budgetItemId: string | null;
   type: 'income' | 'expense';
-  merchant?: string;
-  account?: string;
-  checkNumber?: string;
+  merchant?: string | null;
+  account?: string | null;
+  checkNumber?: string | null;
+  // Teller-specific fields
+  tellerTransactionId?: string | null;
+  tellerAccountId?: string | null;
+  status?: 'posted' | 'pending' | null;
 }
 
 export interface BudgetItem {

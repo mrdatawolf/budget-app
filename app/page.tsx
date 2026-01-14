@@ -118,7 +118,7 @@ export default function Home() {
 
       {/* Right sidebar for summary - fixed position */}
       <div className="w-96 bg-gray-50 p-6 overflow-y-auto hide-scrollbar">
-        <BudgetSummary budget={budget} />
+        <BudgetSummary budget={budget} onRefresh={refreshBudget} />
       </div>
     </div>
   );
