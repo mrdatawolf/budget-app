@@ -20,19 +20,25 @@ export function transformDbBudgetToAppBudget(dbBudget: any): Budget {
           id: cat.categoryType,
           dbId: cat.id,
           name: cat.name,
-          items: cat.items.map((item: any) => ({
-            id: item.id.toString(),
-            name: item.name,
-            planned: item.planned,
-            actual: item.transactions.reduce((sum: number, t: any) => sum + t.amount, 0),
-            transactions: item.transactions.map((t: any) => ({
-              id: t.id.toString(),
-              date: t.date,
-              description: t.description,
-              amount: t.amount,
-              budgetItemId: t.budgetItemId.toString(),
-            })),
-          })),
+          items: cat.items.map((item: any) => {
+            // Filter out soft-deleted transactions
+            const activeTransactions = item.transactions.filter((t: any) => !t.deletedAt);
+            return {
+              id: item.id.toString(),
+              name: item.name,
+              planned: item.planned,
+              actual: activeTransactions.reduce((sum: number, t: any) => sum + t.amount, 0),
+              transactions: activeTransactions.map((t: any) => ({
+                id: t.id.toString(),
+                date: t.date,
+                description: t.description,
+                amount: t.amount,
+                budgetItemId: t.budgetItemId.toString(),
+                type: t.type,
+                merchant: t.merchant,
+              })),
+            };
+          }),
         };
       }
     });

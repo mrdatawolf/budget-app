@@ -28,7 +28,7 @@ export const budgetItems = sqliteTable('budget_items', {
 
 export const transactions = sqliteTable('transactions', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  budgetItemId: integer('budget_item_id').notNull().references(() => budgetItems.id, { onDelete: 'cascade' }),
+  budgetItemId: integer('budget_item_id').references(() => budgetItems.id, { onDelete: 'cascade' }),
   date: text('date').notNull(),
   description: text('description').notNull(),
   amount: real('amount').notNull(),
@@ -36,6 +36,29 @@ export const transactions = sqliteTable('transactions', {
   merchant: text('merchant'),
   account: text('account'),
   checkNumber: text('check_number'),
+  // Teller-specific fields
+  tellerTransactionId: text('teller_transaction_id').unique(),
+  tellerAccountId: text('teller_account_id'),
+  status: text('status').$type<'posted' | 'pending'>(),
+  // Soft delete
+  deletedAt: integer('deleted_at', { mode: 'timestamp' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+});
+
+// Linked bank accounts from Teller
+export const linkedAccounts = sqliteTable('linked_accounts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  tellerAccountId: text('teller_account_id').notNull().unique(),
+  tellerEnrollmentId: text('teller_enrollment_id').notNull(),
+  accessToken: text('access_token').notNull(),
+  institutionName: text('institution_name').notNull(),
+  institutionId: text('institution_id').notNull(),
+  accountName: text('account_name').notNull(),
+  accountType: text('account_type').notNull(), // 'depository' or 'credit'
+  accountSubtype: text('account_subtype').notNull(), // 'checking', 'savings', 'credit_card', etc.
+  lastFour: text('last_four').notNull(),
+  status: text('status').notNull().$type<'open' | 'closed'>(),
+  lastSyncedAt: integer('last_synced_at', { mode: 'timestamp' }),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
 });
 
@@ -65,4 +88,12 @@ export const transactionsRelations = relations(transactions, ({ one }) => ({
     fields: [transactions.budgetItemId],
     references: [budgetItems.id],
   }),
+  linkedAccount: one(linkedAccounts, {
+    fields: [transactions.tellerAccountId],
+    references: [linkedAccounts.tellerAccountId],
+  }),
+}));
+
+export const linkedAccountsRelations = relations(linkedAccounts, ({ many }) => ({
+  transactions: many(transactions),
 }));
