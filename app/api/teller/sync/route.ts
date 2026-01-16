@@ -30,6 +30,7 @@ export async function POST(request: NextRequest) {
 
     const results = {
       synced: 0,
+      updated: 0,
       skipped: 0,
       errors: [] as string[],
     };
@@ -49,6 +50,10 @@ export async function POST(request: NextRequest) {
         );
 
         for (const txn of tellerTransactions) {
+          // Parse amount - Teller returns negative for debits, positive for credits
+          const amount = Math.abs(parseFloat(txn.amount));
+          const type: 'income' | 'expense' = parseFloat(txn.amount) > 0 ? 'income' : 'expense';
+
           // Check if transaction already exists
           const existing = await db
             .select()
@@ -57,17 +62,35 @@ export async function POST(request: NextRequest) {
             .limit(1);
 
           if (existing.length > 0) {
-            results.skipped++;
+            const existingTxn = existing[0];
+
+            // Check if we need to update (status changed or amount changed)
+            const statusChanged = existingTxn.status !== txn.status;
+            const amountChanged = Math.abs(existingTxn.amount - amount) > 0.001;
+
+            if (statusChanged || amountChanged) {
+              await db
+                .update(transactions)
+                .set({
+                  status: txn.status,
+                  amount: amount,
+                  // Update description/merchant in case they changed too
+                  description: txn.description,
+                  merchant: txn.details?.counterparty?.name || existingTxn.merchant,
+                })
+                .where(eq(transactions.id, existingTxn.id));
+
+              results.updated++;
+            } else {
+              results.skipped++;
+            }
             continue;
           }
-
-          // Parse amount - Teller returns negative for debits, positive for credits
-          const amount = Math.abs(parseFloat(txn.amount));
-          const type: 'income' | 'expense' = parseFloat(txn.amount) > 0 ? 'income' : 'expense';
 
           // Insert new transaction (uncategorized - no budgetItemId)
           await db.insert(transactions).values({
             budgetItemId: null, // Uncategorized
+            linkedAccountId: account.id, // Link to the account
             date: txn.date,
             description: txn.description,
             amount,

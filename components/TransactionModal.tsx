@@ -23,7 +23,6 @@ export default function TransactionModal({
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [type, setType] = useState<'income' | 'expense'>('expense');
   const [merchant, setMerchant] = useState('');
-  const [account, setAccount] = useState('');
   const [checkNumber, setCheckNumber] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -38,7 +37,6 @@ export default function TransactionModal({
       budgetItemId,
       type,
       merchant: merchant.trim() || undefined,
-      account: account.trim() || undefined,
       checkNumber: checkNumber.trim() || undefined,
     });
 
@@ -47,7 +45,6 @@ export default function TransactionModal({
     setDate(new Date().toISOString().split('T')[0]);
     setType('expense');
     setMerchant('');
-    setAccount('');
     setCheckNumber('');
     onClose();
   };
@@ -153,20 +150,6 @@ export default function TransactionModal({
                 required
               />
             </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Account <span className="text-gray-400 text-xs">(optional)</span>
-            </label>
-            <input
-              type="text"
-              value={account}
-              onChange={(e) => setAccount(e.target.value)}
-              onFocus={(e) => e.target.select()}
-              placeholder="e.g., Checking *1234"
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
           </div>
 
           <div>

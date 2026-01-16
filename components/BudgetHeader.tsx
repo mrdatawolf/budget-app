@@ -1,5 +1,5 @@
-import Link from 'next/link';
-import { FaCog } from 'react-icons/fa';
+import Link from "next/link";
+import { FaCog } from "react-icons/fa";
 
 interface BudgetHeaderProps {
   month: number;
@@ -8,11 +8,25 @@ interface BudgetHeaderProps {
 }
 
 const months = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
-export default function BudgetHeader({ month, year, onMonthChange }: BudgetHeaderProps) {
+export default function BudgetHeader({
+  month,
+  year,
+  onMonthChange,
+}: BudgetHeaderProps) {
   const handlePrevMonth = () => {
     if (month === 0) {
       onMonthChange(11, year - 1);
@@ -49,7 +63,7 @@ export default function BudgetHeader({ month, year, onMonthChange }: BudgetHeade
             >
               ←
             </button>
-            <div className="text-xl font-semibold text-gray-900 min-w-[200px] text-center">
+            <div className="text-xl font-semibold text-gray-900 min-w-50 text-center">
               {months[month]} {year}
             </div>
             <button

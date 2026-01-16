@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BudgetCategory, Transaction, BudgetItem } from "@/types/budget";
-import TransactionModal from "./TransactionModal";
+import { BudgetCategory, BudgetItem, Transaction } from "@/types/budget";
 import { FaTrash } from "react-icons/fa";
 import {
   DndContext,
@@ -26,6 +25,7 @@ interface BudgetSectionProps {
   category: BudgetCategory;
   onRefresh: () => void;
   isIncome?: boolean;
+  onTransactionClick?: (transaction: Transaction) => void;
 }
 
 interface SortableItemProps {
@@ -38,9 +38,9 @@ interface SortableItemProps {
   onToggleExpanded: (id: string) => void;
   onUpdateName: (id: string, name: string) => void;
   onUpdatePlanned: (id: string, value: number) => void;
-  onOpenTransaction: (id: string, name: string) => void;
   onDelete: (id: string) => void;
   onDeleteTransaction: (id: string) => void;
+  onTransactionClick?: (transaction: Transaction) => void;
   setEditingNames: (names: Record<string, string>) => void;
   setEditingValues: (values: Record<string, string | number>) => void;
   isIncome?: boolean;
@@ -54,9 +54,9 @@ function SortableItem({
   onToggleExpanded,
   onUpdateName,
   onUpdatePlanned,
-  onOpenTransaction,
   onDelete,
   onDeleteTransaction,
+  onTransactionClick,
   setEditingNames,
   setEditingValues,
   isIncome = false,
@@ -77,6 +77,8 @@ function SortableItem({
   };
 
   const difference = item.planned - item.actual;
+  const progressPercent = item.planned > 0 ? Math.min((item.actual / item.planned) * 100, 100) : 0;
+  const isOverBudget = item.actual > item.planned;
 
   const isEditing =
     editingNames[item.id] !== undefined || editingValues[item.id] !== undefined;
@@ -85,7 +87,7 @@ function SortableItem({
     <div
       ref={setNodeRef}
       style={style}
-      className="border-b border-gray-100 last:border-0"
+      className="relative"
     >
       <div className="grid grid-cols-10 gap-4 items-center py-2 rounded">
         <div className="col-span-5 flex items-center gap-2">
@@ -211,15 +213,17 @@ function SortableItem({
             ${Math.abs(difference).toFixed(2)}
           </span>
         </div> */}
-        <div className="col-span-1 flex items-center justify-end gap-1">
-          <button
-            onClick={() => onOpenTransaction(item.id, item.name)}
-            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-            title="Add transaction"
-          >
-            +$
-          </button>
-        </div>
+        <div className="col-span-1"></div>
+      </div>
+
+      {/* Progress bar as bottom border */}
+      <div className="h-px w-full bg-gray-100">
+        <div
+          className={`h-full transition-all duration-300 ${
+            isOverBudget ? 'bg-red-500 shadow-[0_0_2px_rgba(239,68,68,0.4)]' : 'bg-blue-500 shadow-[0_0_2px_rgba(59,130,246,0.4)]'
+          }`}
+          style={{ width: `${isOverBudget ? 100 : progressPercent}%` }}
+        />
       </div>
 
       {isExpanded && item.transactions.length > 0 && (
@@ -231,14 +235,15 @@ function SortableItem({
             {item.transactions.map((transaction) => (
               <div
                 key={transaction.id}
-                className="flex items-center justify-between text-sm py-1 hover:bg-white rounded px-2"
+                onClick={() => onTransactionClick?.(transaction)}
+                className="flex items-center justify-between text-sm py-1 hover:bg-white rounded px-2 cursor-pointer transition-colors"
               >
                 <div className="flex-1">
                   <span className="text-gray-600">
                     {new Date(transaction.date).toLocaleDateString()}
                   </span>
                   <span className="ml-3 text-gray-900">
-                    {transaction.description}
+                    {transaction.merchant || transaction.description}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -246,7 +251,10 @@ function SortableItem({
                     ${transaction.amount.toFixed(2)}
                   </span>
                   <button
-                    onClick={() => onDeleteTransaction(transaction.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteTransaction(transaction.id);
+                    }}
                     className="text-red-600 hover:text-red-800 text-xs"
                   >
                     ×
@@ -265,12 +273,10 @@ export default function BudgetSection({
   category,
   onRefresh,
   isIncome = false,
+  onTransactionClick,
 }: BudgetSectionProps) {
   const [newItemName, setNewItemName] = useState("");
   const [isAddingItem, setIsAddingItem] = useState(false);
-  const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [selectedItemName, setSelectedItemName] = useState<string>("");
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [editingValues, setEditingValues] = useState<Record<string, string | number>>(
     {}
@@ -345,22 +351,6 @@ export default function BudgetSection({
     }
   };
 
-  const addTransaction = async (transaction: Omit<Transaction, "id">) => {
-    try {
-      const response = await fetch("/api/transactions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(transaction),
-      });
-
-      if (response.ok) {
-        onRefresh();
-      }
-    } catch (error) {
-      console.error("Error adding transaction:", error);
-    }
-  };
-
   const deleteTransaction = async (transactionId: string) => {
     try {
       await fetch(`/api/transactions?id=${transactionId}`, {
@@ -392,12 +382,6 @@ export default function BudgetSection({
     } catch (error) {
       console.error("Error deleting item:", error);
     }
-  };
-
-  const openTransactionModal = (itemId: string, itemName: string) => {
-    setSelectedItemId(itemId);
-    setSelectedItemName(itemName);
-    setIsTransactionModalOpen(true);
   };
 
   const toggleExpanded = (itemId: string) => {
@@ -504,9 +488,9 @@ export default function BudgetSection({
                       onToggleExpanded={toggleExpanded}
                       onUpdateName={updateItemName}
                       onUpdatePlanned={updateItemPlanned}
-                      onOpenTransaction={openTransactionModal}
                       onDelete={deleteItem}
                       onDeleteTransaction={deleteTransaction}
+                      onTransactionClick={onTransactionClick}
                       setEditingNames={setEditingNames}
                       setEditingValues={setEditingValues}
                       isIncome={isIncome}
@@ -557,20 +541,6 @@ export default function BudgetSection({
           )}
         </div>
       </div>
-
-      {selectedItemId && (
-        <TransactionModal
-          isOpen={isTransactionModalOpen}
-          onClose={() => {
-            setIsTransactionModalOpen(false);
-            setSelectedItemId(null);
-            setSelectedItemName("");
-          }}
-          onAddTransaction={addTransaction}
-          budgetItemId={selectedItemId}
-          budgetItemName={selectedItemName}
-        />
-      )}
     </>
   );
 }

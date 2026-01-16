@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
             orderBy: [asc(budgetItems.order)],
             with: {
               transactions: true,
+              splitTransactions: true,
             },
           },
         },
@@ -59,6 +60,7 @@ export async function GET(request: NextRequest) {
               orderBy: [asc(budgetItems.order)],
               with: {
                 transactions: true,
+                splitTransactions: true,
               },
             },
           },

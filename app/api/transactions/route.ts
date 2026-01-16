@@ -5,7 +5,7 @@ import { eq, isNotNull } from 'drizzle-orm';
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { budgetItemId, date, description, amount, type, merchant, account, checkNumber } = body;
+  const { budgetItemId, linkedAccountId, date, description, amount, type, merchant, checkNumber } = body;
 
   if (!budgetItemId || !date || !description || amount === undefined || !type) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -15,12 +15,12 @@ export async function POST(request: NextRequest) {
     .insert(transactions)
     .values({
       budgetItemId: parseInt(budgetItemId),
+      linkedAccountId: linkedAccountId ? parseInt(linkedAccountId) : null,
       date,
       description,
       amount,
       type,
       merchant: merchant || null,
-      account: account || null,
       checkNumber: checkNumber || null,
     })
     .returning();
@@ -28,20 +28,43 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(transaction);
 }
 
-// PUT - Update transaction (for assigning to budget item)
+// PUT - Update transaction (full edit or just assign budget item)
 export async function PUT(request: NextRequest) {
   const body = await request.json();
-  const { id, budgetItemId } = body;
+  const { id, budgetItemId, linkedAccountId, date, description, amount, type, merchant } = body;
 
   if (!id) {
     return NextResponse.json({ error: 'Missing transaction id' }, { status: 400 });
   }
 
+  // Build update object with only provided fields
+  const updateData: Record<string, unknown> = {};
+
+  if (budgetItemId !== undefined) {
+    updateData.budgetItemId = budgetItemId ? parseInt(budgetItemId) : null;
+  }
+  if (linkedAccountId !== undefined) {
+    updateData.linkedAccountId = linkedAccountId ? parseInt(linkedAccountId) : null;
+  }
+  if (date !== undefined) {
+    updateData.date = date;
+  }
+  if (description !== undefined) {
+    updateData.description = description;
+  }
+  if (amount !== undefined) {
+    updateData.amount = amount;
+  }
+  if (type !== undefined) {
+    updateData.type = type;
+  }
+  if (merchant !== undefined) {
+    updateData.merchant = merchant || null;
+  }
+
   const [updated] = await db
     .update(transactions)
-    .set({
-      budgetItemId: budgetItemId ? parseInt(budgetItemId) : null,
-    })
+    .set(updateData)
     .where(eq(transactions.id, parseInt(id)))
     .returning();
 
