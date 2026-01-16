@@ -29,12 +29,12 @@ export const budgetItems = sqliteTable('budget_items', {
 export const transactions = sqliteTable('transactions', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   budgetItemId: integer('budget_item_id').references(() => budgetItems.id, { onDelete: 'cascade' }),
+  linkedAccountId: integer('linked_account_id').references(() => linkedAccounts.id),
   date: text('date').notNull(),
   description: text('description').notNull(),
   amount: real('amount').notNull(),
   type: text('type').notNull().$type<'income' | 'expense'>(),
   merchant: text('merchant'),
-  account: text('account'),
   checkNumber: text('check_number'),
   // Teller-specific fields
   tellerTransactionId: text('teller_transaction_id').unique(),
@@ -42,6 +42,16 @@ export const transactions = sqliteTable('transactions', {
   status: text('status').$type<'posted' | 'pending'>(),
   // Soft delete
   deletedAt: integer('deleted_at', { mode: 'timestamp' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+});
+
+// Split transactions - child allocations of a parent transaction
+export const splitTransactions = sqliteTable('split_transactions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  parentTransactionId: integer('parent_transaction_id').notNull().references(() => transactions.id, { onDelete: 'cascade' }),
+  budgetItemId: integer('budget_item_id').notNull().references(() => budgetItems.id, { onDelete: 'cascade' }),
+  amount: real('amount').notNull(),
+  description: text('description'), // Optional context like "household items"
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
 });
 
@@ -81,16 +91,29 @@ export const budgetItemsRelations = relations(budgetItems, ({ one, many }) => ({
     references: [budgetCategories.id],
   }),
   transactions: many(transactions),
+  splitTransactions: many(splitTransactions),
 }));
 
-export const transactionsRelations = relations(transactions, ({ one }) => ({
+export const transactionsRelations = relations(transactions, ({ one, many }) => ({
   budgetItem: one(budgetItems, {
     fields: [transactions.budgetItemId],
     references: [budgetItems.id],
   }),
   linkedAccount: one(linkedAccounts, {
-    fields: [transactions.tellerAccountId],
-    references: [linkedAccounts.tellerAccountId],
+    fields: [transactions.linkedAccountId],
+    references: [linkedAccounts.id],
+  }),
+  splits: many(splitTransactions),
+}));
+
+export const splitTransactionsRelations = relations(splitTransactions, ({ one }) => ({
+  parentTransaction: one(transactions, {
+    fields: [splitTransactions.parentTransactionId],
+    references: [transactions.id],
+  }),
+  budgetItem: one(budgetItems, {
+    fields: [splitTransactions.budgetItemId],
+    references: [budgetItems.id],
   }),
 }));
 

@@ -23,19 +23,34 @@ export function transformDbBudgetToAppBudget(dbBudget: any): Budget {
           items: cat.items.map((item: any) => {
             // Filter out soft-deleted transactions
             const activeTransactions = item.transactions.filter((t: any) => !t.deletedAt);
+
+            // Calculate actual from direct transactions
+            const directActual = activeTransactions.reduce((sum: number, t: any) => sum + t.amount, 0);
+
+            // Add split transaction amounts allocated to this budget item
+            const splitActual = (item.splitTransactions || []).reduce((sum: number, s: any) => sum + s.amount, 0);
+
             return {
               id: item.id.toString(),
               name: item.name,
               planned: item.planned,
-              actual: activeTransactions.reduce((sum: number, t: any) => sum + t.amount, 0),
+              actual: directActual + splitActual,
               transactions: activeTransactions.map((t: any) => ({
                 id: t.id.toString(),
                 date: t.date,
                 description: t.description,
                 amount: t.amount,
-                budgetItemId: t.budgetItemId.toString(),
+                budgetItemId: t.budgetItemId?.toString() || null,
+                linkedAccountId: t.linkedAccountId,
                 type: t.type,
                 merchant: t.merchant,
+              })),
+              // Include split transactions for display
+              splitTransactions: (item.splitTransactions || []).map((s: any) => ({
+                id: s.id.toString(),
+                parentTransactionId: s.parentTransactionId.toString(),
+                amount: s.amount,
+                description: s.description,
               })),
             };
           }),

@@ -4,14 +4,21 @@ export interface Transaction {
   description: string;
   amount: number;
   budgetItemId: string | null;
+  linkedAccountId?: number | null;
   type: 'income' | 'expense';
   merchant?: string | null;
-  account?: string | null;
   checkNumber?: string | null;
   // Teller-specific fields
   tellerTransactionId?: string | null;
   tellerAccountId?: string | null;
   status?: 'posted' | 'pending' | null;
+}
+
+export interface SplitTransaction {
+  id: string;
+  parentTransactionId: string;
+  amount: number;
+  description?: string | null;
 }
 
 export interface BudgetItem {
@@ -20,6 +27,7 @@ export interface BudgetItem {
   planned: number;
   actual: number;
   transactions: Transaction[];
+  splitTransactions?: SplitTransaction[];
 }
 
 export interface BudgetCategory {
