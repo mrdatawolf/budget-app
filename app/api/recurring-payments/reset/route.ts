@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { recurringPayments } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { RecurringFrequency } from '@/types/budget';
+import { requireAuth, isAuthError } from '@/lib/auth';
 
 // Helper to calculate next due date based on frequency
 function getNextDueDate(currentDueDate: string, frequency: RecurringFrequency): string {
@@ -29,6 +30,10 @@ function getNextDueDate(currentDueDate: string, frequency: RecurringFrequency): 
 // POST /api/recurring-payments/reset
 // Marks a payment as paid and resets for the next cycle
 export async function POST(request: NextRequest) {
+  const authResult = await requireAuth();
+  if (isAuthError(authResult)) return authResult.error;
+  const { userId } = authResult;
+
   const body = await request.json();
   const { id } = body;
 
@@ -36,9 +41,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Missing payment id' }, { status: 400 });
   }
 
-  // Get current payment
+  // Get current payment and verify ownership
   const payment = await db.query.recurringPayments.findFirst({
-    where: eq(recurringPayments.id, parseInt(id)),
+    where: and(eq(recurringPayments.id, parseInt(id)), eq(recurringPayments.userId, userId)),
   });
 
   if (!payment) {

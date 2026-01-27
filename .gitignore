@@ -51,3 +51,6 @@ drizzle/
 
 # Claude Code
 .claude/
+
+# clerk configuration (can include secrets)
+/.clerk/

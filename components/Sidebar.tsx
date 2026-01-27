@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { UserButton } from '@clerk/nextjs';
 import {
   FaWallet,
   FaUniversity,
@@ -100,13 +101,21 @@ export default function Sidebar() {
       </nav>
 
       {/* Footer */}
-      {!isCollapsed && (
-        <div className="p-4 border-t border-gray-800">
-          <p className="text-xs text-gray-500 text-center">
-            Budget Tracker v1.0
-          </p>
+      <div className={`p-4 border-t border-gray-800 ${isCollapsed ? 'flex justify-center' : ''}`}>
+        <div className={`flex items-center ${isCollapsed ? '' : 'gap-3'}`}>
+          <UserButton
+            afterSignOutUrl="/sign-in"
+            appearance={{
+              elements: {
+                avatarBox: 'h-8 w-8',
+              }
+            }}
+          />
+          {!isCollapsed && (
+            <span className="text-sm text-gray-400">Account</span>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -1,14 +1,80 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { transactions } from '@/db/schema';
-import { eq, isNotNull } from 'drizzle-orm';
+import { transactions, budgetItems, linkedAccounts } from '@/db/schema';
+import { eq, isNotNull, and } from 'drizzle-orm';
+import { requireAuth, isAuthError } from '@/lib/auth';
+
+// Helper to verify budget item ownership
+async function verifyBudgetItemOwnership(budgetItemId: number, userId: string): Promise<boolean> {
+  const item = await db.query.budgetItems.findFirst({
+    where: eq(budgetItems.id, budgetItemId),
+    with: {
+      category: {
+        with: { budget: true },
+      },
+    },
+  });
+  return item?.category?.budget?.userId === userId;
+}
+
+// Helper to verify transaction ownership (via budgetItem or linkedAccount)
+async function verifyTransactionOwnership(transactionId: number, userId: string): Promise<boolean> {
+  const txn = await db.query.transactions.findFirst({
+    where: eq(transactions.id, transactionId),
+    with: {
+      budgetItem: {
+        with: {
+          category: {
+            with: { budget: true },
+          },
+        },
+      },
+      linkedAccount: true,
+    },
+  });
+
+  if (!txn) return false;
+
+  // Check via budget item path
+  if (txn.budgetItem?.category?.budget?.userId === userId) {
+    return true;
+  }
+
+  // Check via linked account path
+  if (txn.linkedAccount?.userId === userId) {
+    return true;
+  }
+
+  // If no budgetItem or linkedAccount, transaction is orphaned - allow owner if created by them
+  // For now, we'll require at least one ownership path
+  return false;
+}
 
 export async function POST(request: NextRequest) {
+  const authResult = await requireAuth();
+  if (isAuthError(authResult)) return authResult.error;
+  const { userId } = authResult;
+
   const body = await request.json();
   const { budgetItemId, linkedAccountId, date, description, amount, type, merchant, checkNumber } = body;
 
   if (!budgetItemId || !date || !description || amount === undefined || !type) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+  }
+
+  // Verify budget item ownership
+  if (!(await verifyBudgetItemOwnership(parseInt(budgetItemId), userId))) {
+    return NextResponse.json({ error: 'Budget item not found' }, { status: 404 });
+  }
+
+  // Verify linked account ownership if provided
+  if (linkedAccountId) {
+    const account = await db.query.linkedAccounts.findFirst({
+      where: and(eq(linkedAccounts.id, parseInt(linkedAccountId)), eq(linkedAccounts.userId, userId)),
+    });
+    if (!account) {
+      return NextResponse.json({ error: 'Linked account not found' }, { status: 404 });
+    }
   }
 
   const [transaction] = await db
@@ -30,11 +96,25 @@ export async function POST(request: NextRequest) {
 
 // PUT - Update transaction (full edit or just assign budget item)
 export async function PUT(request: NextRequest) {
+  const authResult = await requireAuth();
+  if (isAuthError(authResult)) return authResult.error;
+  const { userId } = authResult;
+
   const body = await request.json();
   const { id, budgetItemId, linkedAccountId, date, description, amount, type, merchant } = body;
 
   if (!id) {
     return NextResponse.json({ error: 'Missing transaction id' }, { status: 400 });
+  }
+
+  // Verify transaction ownership
+  if (!(await verifyTransactionOwnership(parseInt(id), userId))) {
+    return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
+  }
+
+  // If updating budgetItemId, verify ownership of the new budget item
+  if (budgetItemId && !(await verifyBudgetItemOwnership(parseInt(budgetItemId), userId))) {
+    return NextResponse.json({ error: 'Budget item not found' }, { status: 404 });
   }
 
   // Build update object with only provided fields
@@ -73,11 +153,20 @@ export async function PUT(request: NextRequest) {
 
 // DELETE - Soft delete a transaction
 export async function DELETE(request: NextRequest) {
+  const authResult = await requireAuth();
+  if (isAuthError(authResult)) return authResult.error;
+  const { userId } = authResult;
+
   const searchParams = request.nextUrl.searchParams;
   const id = searchParams.get('id');
 
   if (!id) {
     return NextResponse.json({ error: 'Missing transaction id' }, { status: 400 });
+  }
+
+  // Verify transaction ownership
+  if (!(await verifyTransactionOwnership(parseInt(id), userId))) {
+    return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
   }
 
   // Soft delete by setting deletedAt timestamp
@@ -91,6 +180,10 @@ export async function DELETE(request: NextRequest) {
 
 // GET - Get a single transaction by ID or deleted transactions for a month/year
 export async function GET(request: NextRequest) {
+  const authResult = await requireAuth();
+  if (isAuthError(authResult)) return authResult.error;
+  const { userId } = authResult;
+
   const searchParams = request.nextUrl.searchParams;
   const id = searchParams.get('id');
   const month = searchParams.get('month');
@@ -99,6 +192,11 @@ export async function GET(request: NextRequest) {
 
   // Fetch single transaction by ID
   if (id) {
+    // Verify ownership before returning
+    if (!(await verifyTransactionOwnership(parseInt(id), userId))) {
+      return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
+    }
+
     const [transaction] = await db
       .select()
       .from(transactions)
@@ -122,23 +220,53 @@ export async function GET(request: NextRequest) {
 
   // Only return deleted transactions if explicitly requested
   if (deleted === 'true') {
-    const deletedTransactions = await db
-      .select()
-      .from(transactions)
-      .where(isNotNull(transactions.deletedAt));
+    // Get all deleted transactions and filter by ownership
+    const deletedTransactions = await db.query.transactions.findMany({
+      where: isNotNull(transactions.deletedAt),
+      with: {
+        budgetItem: {
+          with: {
+            category: {
+              with: { budget: true },
+            },
+          },
+        },
+        linkedAccount: true,
+      },
+    });
+
+    // Filter by ownership
+    const ownedTransactions = deletedTransactions.filter(txn => {
+      if (txn.budgetItem?.category?.budget?.userId === userId) return true;
+      if (txn.linkedAccount?.userId === userId) return true;
+      return false;
+    });
 
     // Filter by month/year if provided
-    let filtered = deletedTransactions;
+    let filtered = ownedTransactions;
     if (month !== null && year !== null) {
       const monthNum = parseInt(month);
       const yearNum = parseInt(year);
-      filtered = deletedTransactions.filter(txn => {
+      filtered = ownedTransactions.filter(txn => {
         const [txnYear, txnMonth] = txn.date.split('-').map(Number);
         return (txnMonth - 1) === monthNum && txnYear === yearNum;
       });
     }
 
-    return NextResponse.json(filtered);
+    // Map to simpler format
+    const result = filtered.map(txn => ({
+      id: txn.id,
+      budgetItemId: txn.budgetItemId,
+      linkedAccountId: txn.linkedAccountId,
+      date: txn.date,
+      description: txn.description,
+      amount: txn.amount,
+      type: txn.type,
+      merchant: txn.merchant,
+      deletedAt: txn.deletedAt,
+    }));
+
+    return NextResponse.json(result);
   }
 
   return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
@@ -146,11 +274,20 @@ export async function GET(request: NextRequest) {
 
 // PATCH - Restore a soft-deleted transaction
 export async function PATCH(request: NextRequest) {
+  const authResult = await requireAuth();
+  if (isAuthError(authResult)) return authResult.error;
+  const { userId } = authResult;
+
   const body = await request.json();
   const { id } = body;
 
   if (!id) {
     return NextResponse.json({ error: 'Missing transaction id' }, { status: 400 });
+  }
+
+  // Verify transaction ownership
+  if (!(await verifyTransactionOwnership(parseInt(id), userId))) {
+    return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
   }
 
   // Restore by clearing deletedAt

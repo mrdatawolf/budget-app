@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { linkedAccounts } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { createTellerClient, TellerAccount } from '@/lib/teller';
+import { requireAuth, isAuthError } from '@/lib/auth';
 
 // GET - List all linked accounts from database
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const accounts = await db.select().from(linkedAccounts);
+    const authResult = await requireAuth();
+    if (isAuthError(authResult)) return authResult.error;
+    const { userId } = authResult;
+
+    const accounts = await db.select().from(linkedAccounts).where(eq(linkedAccounts.userId, userId));
     return NextResponse.json(accounts);
   } catch (error) {
     console.error('Error fetching linked accounts:', error);
@@ -18,6 +23,10 @@ export async function GET() {
 // POST - Save a new linked account after Teller Connect enrollment
 export async function POST(request: NextRequest) {
   try {
+    const authResult = await requireAuth();
+    if (isAuthError(authResult)) return authResult.error;
+    const { userId } = authResult;
+
     const body = await request.json();
     const { accessToken, enrollment } = body;
 
@@ -32,11 +41,11 @@ export async function POST(request: NextRequest) {
     // Save each account to the database
     const savedAccounts = [];
     for (const account of tellerAccounts) {
-      // Check if account already exists
+      // Check if account already exists for this user
       const existing = await db
         .select()
         .from(linkedAccounts)
-        .where(eq(linkedAccounts.tellerAccountId, account.id))
+        .where(and(eq(linkedAccounts.tellerAccountId, account.id), eq(linkedAccounts.userId, userId)))
         .limit(1);
 
       if (existing.length > 0) {
@@ -56,6 +65,7 @@ export async function POST(request: NextRequest) {
         const [newAccount] = await db
           .insert(linkedAccounts)
           .values({
+            userId,
             tellerAccountId: account.id,
             tellerEnrollmentId: enrollment?.id || account.enrollment_id,
             accessToken,
@@ -82,6 +92,10 @@ export async function POST(request: NextRequest) {
 // DELETE - Remove a linked account
 export async function DELETE(request: NextRequest) {
   try {
+    const authResult = await requireAuth();
+    if (isAuthError(authResult)) return authResult.error;
+    const { userId } = authResult;
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -89,11 +103,11 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Account ID is required' }, { status: 400 });
     }
 
-    // Get the account to retrieve the access token
+    // Get the account and verify ownership
     const [account] = await db
       .select()
       .from(linkedAccounts)
-      .where(eq(linkedAccounts.id, parseInt(id)))
+      .where(and(eq(linkedAccounts.id, parseInt(id)), eq(linkedAccounts.userId, userId)))
       .limit(1);
 
     if (!account) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { budgets, budgetCategories, budgetItems } from '@/db/schema';
 import { eq, and, asc } from 'drizzle-orm';
+import { requireAuth, isAuthError } from '@/lib/auth';
 
 const CATEGORY_TYPES = [
   { type: 'income', name: 'Income' },
@@ -15,6 +16,10 @@ const CATEGORY_TYPES = [
 ];
 
 export async function POST(request: NextRequest) {
+  const authResult = await requireAuth();
+  if (isAuthError(authResult)) return authResult.error;
+  const { userId } = authResult;
+
   const body = await request.json();
   const { sourceMonth, sourceYear, targetMonth, targetYear } = body;
 
@@ -29,7 +34,7 @@ export async function POST(request: NextRequest) {
 
   // Fetch source budget with all items
   const sourceBudget = await db.query.budgets.findFirst({
-    where: and(eq(budgets.month, sourceMonth), eq(budgets.year, sourceYear)),
+    where: and(eq(budgets.userId, userId), eq(budgets.month, sourceMonth), eq(budgets.year, sourceYear)),
     with: {
       categories: {
         with: {
@@ -43,7 +48,7 @@ export async function POST(request: NextRequest) {
 
   // Get or create target budget
   let targetBudget = await db.query.budgets.findFirst({
-    where: and(eq(budgets.month, targetMonth), eq(budgets.year, targetYear)),
+    where: and(eq(budgets.userId, userId), eq(budgets.month, targetMonth), eq(budgets.year, targetYear)),
     with: {
       categories: true,
     },
@@ -51,6 +56,7 @@ export async function POST(request: NextRequest) {
 
   if (!targetBudget) {
     const [newBudget] = await db.insert(budgets).values({
+      userId,
       month: targetMonth,
       year: targetYear,
       buffer: sourceBudget?.buffer || 0,
