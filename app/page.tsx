@@ -35,6 +35,15 @@ export default function Home() {
   const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>([]);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [selectedBudgetItem, setSelectedBudgetItem] = useState<SelectedBudgetItem | null>(null);
+  const [splitToEdit, setSplitToEdit] = useState<string | null>(null);
+
+  const handleSplitClick = (parentTransactionId: string) => {
+    setSplitToEdit(parentTransactionId);
+  };
+
+  const clearSplitToEdit = () => {
+    setSplitToEdit(null);
+  };
 
   const fetchLinkedAccounts = useCallback(async () => {
     try {
@@ -311,8 +320,8 @@ export default function Home() {
               <BudgetSection
                 category={budget.categories.income}
                 onRefresh={refreshBudget}
-                isIncome={true}
                 onTransactionClick={handleTransactionClick}
+                onSplitClick={handleSplitClick}
                 onItemClick={handleItemClick}
                 selectedItemId={selectedBudgetItem?.item.id}
               />
@@ -321,6 +330,7 @@ export default function Home() {
                 category={budget.categories.giving}
                 onRefresh={refreshBudget}
                 onTransactionClick={handleTransactionClick}
+                onSplitClick={handleSplitClick}
                 onItemClick={handleItemClick}
                 selectedItemId={selectedBudgetItem?.item.id}
               />
@@ -329,6 +339,7 @@ export default function Home() {
                 category={budget.categories.household}
                 onRefresh={refreshBudget}
                 onTransactionClick={handleTransactionClick}
+                onSplitClick={handleSplitClick}
                 onItemClick={handleItemClick}
                 selectedItemId={selectedBudgetItem?.item.id}
               />
@@ -337,6 +348,7 @@ export default function Home() {
                 category={budget.categories.transportation}
                 onRefresh={refreshBudget}
                 onTransactionClick={handleTransactionClick}
+                onSplitClick={handleSplitClick}
                 onItemClick={handleItemClick}
                 selectedItemId={selectedBudgetItem?.item.id}
               />
@@ -345,6 +357,7 @@ export default function Home() {
                 category={budget.categories.food}
                 onRefresh={refreshBudget}
                 onTransactionClick={handleTransactionClick}
+                onSplitClick={handleSplitClick}
                 onItemClick={handleItemClick}
                 selectedItemId={selectedBudgetItem?.item.id}
               />
@@ -353,6 +366,7 @@ export default function Home() {
                 category={budget.categories.personal}
                 onRefresh={refreshBudget}
                 onTransactionClick={handleTransactionClick}
+                onSplitClick={handleSplitClick}
                 onItemClick={handleItemClick}
                 selectedItemId={selectedBudgetItem?.item.id}
               />
@@ -361,6 +375,7 @@ export default function Home() {
                 category={budget.categories.insurance}
                 onRefresh={refreshBudget}
                 onTransactionClick={handleTransactionClick}
+                onSplitClick={handleSplitClick}
                 onItemClick={handleItemClick}
                 selectedItemId={selectedBudgetItem?.item.id}
               />
@@ -369,6 +384,7 @@ export default function Home() {
                 category={budget.categories.saving}
                 onRefresh={refreshBudget}
                 onTransactionClick={handleTransactionClick}
+                onSplitClick={handleSplitClick}
                 onItemClick={handleItemClick}
                 selectedItemId={selectedBudgetItem?.item.id}
               />
@@ -391,6 +407,8 @@ export default function Home() {
             onTransactionClick={handleTransactionClick}
             selectedBudgetItem={selectedBudgetItem}
             onCloseItemDetail={() => setSelectedBudgetItem(null)}
+            splitToEdit={splitToEdit}
+            onClearSplitToEdit={clearSplitToEdit}
           />
         </div>
 

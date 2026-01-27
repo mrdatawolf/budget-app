@@ -5,7 +5,7 @@ import { Budget, Transaction, BudgetItem } from "@/types/budget";
 import { FaChartPie, FaReceipt, FaSync, FaCheck, FaTimes, FaUndo, FaPlus } from "react-icons/fa";
 import { HiOutlineScissors } from "react-icons/hi2";
 import AddTransactionModal, { TransactionToEdit } from "./AddTransactionModal";
-import SplitTransactionModal from "./SplitTransactionModal";
+import SplitTransactionModal, { ExistingSplit } from "./SplitTransactionModal";
 
 interface SelectedBudgetItem {
   item: BudgetItem;
@@ -18,6 +18,8 @@ interface BudgetSummaryProps {
   onTransactionClick?: (transaction: Transaction) => void;
   selectedBudgetItem?: SelectedBudgetItem | null;
   onCloseItemDetail?: () => void;
+  splitToEdit?: string | null;
+  onClearSplitToEdit?: () => void;
 }
 
 interface UncategorizedTransaction {
@@ -38,7 +40,7 @@ interface LinkedAccount {
   accountSubtype: string;
 }
 
-export default function BudgetSummary({ budget, onRefresh, onTransactionClick, selectedBudgetItem, onCloseItemDetail }: BudgetSummaryProps) {
+export default function BudgetSummary({ budget, onRefresh, onTransactionClick, selectedBudgetItem, onCloseItemDetail, splitToEdit, onClearSplitToEdit }: BudgetSummaryProps) {
   const [activeTab, setActiveTab] = useState<"summary" | "transactions">(
     "summary"
   );
@@ -54,6 +56,7 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
   const [transactionToEdit, setTransactionToEdit] = useState<TransactionToEdit | null>(null);
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
   const [transactionToSplit, setTransactionToSplit] = useState<UncategorizedTransaction | null>(null);
+  const [existingSplits, setExistingSplits] = useState<ExistingSplit[]>([]);
 
   const buffer = budget.buffer || 0;
 
@@ -89,8 +92,39 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
   const totalActualAvailable = buffer + totalActualIncome;
   const actualRemaining = totalActualAvailable - totalActualExpenses;
 
+  // Fetch parent transaction and its splits, then open split modal for editing
+  const fetchAndOpenSplitModal = async (parentTransactionId: string) => {
+    try {
+      // Fetch parent transaction and its splits in parallel
+      const [txnResponse, splitsResponse] = await Promise.all([
+        fetch(`/api/transactions?id=${parentTransactionId}`),
+        fetch(`/api/transactions/split?transactionId=${parentTransactionId}`),
+      ]);
+
+      if (txnResponse.ok && splitsResponse.ok) {
+        const parentTxn = await txnResponse.json();
+        const splits = await splitsResponse.json();
+
+        // Set up the transaction to split
+        setTransactionToSplit({
+          id: parseInt(parentTxn.id),
+          date: parentTxn.date,
+          description: parentTxn.description,
+          amount: parentTxn.amount,
+          type: parentTxn.type,
+          merchant: parentTxn.merchant,
+          status: null,
+        });
+        setExistingSplits(splits);
+        setIsSplitModalOpen(true);
+      }
+    } catch (error) {
+      console.error('Error fetching split transaction data:', error);
+    }
+  };
+
   // Collect all transactions from all categories (including splits)
-  const allTransactions: (Transaction | { isSplit: true; id: string; date: string; description: string; amount: number; type: 'income' | 'expense'; merchant?: string | null })[] = [];
+  const allTransactions: (Transaction | { isSplit: true; id: string; date: string; description: string; amount: number; type: 'income' | 'expense'; merchant?: string | null; parentTransactionId: string })[] = [];
   Object.entries(budget.categories).forEach(([, category]) => {
     category.items.forEach((item) => {
       item.transactions.forEach((transaction) => {
@@ -106,6 +140,7 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
           amount: split.amount,
           type: split.parentType || 'expense',
           merchant: split.parentMerchant,
+          parentTransactionId: split.parentTransactionId,
         });
       });
     });
@@ -170,6 +205,14 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
     fetchDeleted();
     fetchLinkedAccounts();
   }, [fetchUncategorized, fetchDeleted, fetchLinkedAccounts]);
+
+  // Handle external split edit request (from BudgetSection dropdown)
+  useEffect(() => {
+    if (splitToEdit) {
+      fetchAndOpenSplitModal(splitToEdit);
+      onClearSplitToEdit?.();
+    }
+  }, [splitToEdit, onClearSplitToEdit]);
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -379,12 +422,14 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
 
   const openSplitModal = (txn: UncategorizedTransaction) => {
     setTransactionToSplit(txn);
+    setExistingSplits([]); // Clear any existing splits for new split creation
     setIsSplitModalOpen(true);
   };
 
   const closeSplitModal = () => {
     setIsSplitModalOpen(false);
     setTransactionToSplit(null);
+    setExistingSplits([]);
   };
 
   const handleSplitTransaction = async (splits: { budgetItemId: number; amount: number; description?: string }[]) => {
@@ -431,6 +476,8 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
         amount: t.amount,
         type: t.type,
         isSplit: false,
+        originalTransaction: t, // Keep full transaction for editing
+        parentTransactionId: null as string | null,
       })),
       ...(item.splitTransactions || []).map(s => ({
         id: `split-${s.id}`,
@@ -439,6 +486,8 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
         amount: s.amount,
         type: s.parentType || 'expense' as const,
         isSplit: true,
+        originalTransaction: null,
+        parentTransactionId: s.parentTransactionId,
       })),
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
@@ -545,7 +594,14 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
               {itemTransactions.map((txn) => (
                 <div
                   key={txn.id}
-                  className={`flex items-center justify-between py-2 ${txn.isSplit ? 'bg-purple-50 rounded px-2 -mx-2' : ''}`}
+                  onClick={() => {
+                    if (txn.isSplit && txn.parentTransactionId) {
+                      fetchAndOpenSplitModal(txn.parentTransactionId);
+                    } else if (!txn.isSplit && txn.originalTransaction && onTransactionClick) {
+                      onTransactionClick(txn.originalTransaction);
+                    }
+                  }}
+                  className="flex items-center justify-between py-2 rounded px-2 -mx-2 transition-colors cursor-pointer hover:bg-gray-50"
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-gray-100 rounded-full flex flex-col items-center justify-center text-xs text-gray-500">
@@ -567,6 +623,18 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
             </div>
           )}
         </div>
+
+        {/* Split Transaction Modal - also needed in Item Detail View */}
+        <SplitTransactionModal
+          isOpen={isSplitModalOpen}
+          onClose={closeSplitModal}
+          onSplit={handleSplitTransaction}
+          transactionId={transactionToSplit?.id || 0}
+          transactionAmount={transactionToSplit?.amount || 0}
+          transactionDescription={transactionToSplit?.merchant || transactionToSplit?.description || ''}
+          budgetItems={getAllBudgetItems()}
+          existingSplits={existingSplits}
+        />
       </div>
     );
   }
@@ -850,10 +918,14 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
                     return (
                       <div
                         key={transaction.id}
-                        onClick={() => !isSplit && openEditModal(transaction as Transaction)}
-                        className={`border-b border-gray-100 pb-3 last:border-0 rounded px-2 -mx-2 py-2 transition-colors ${
-                          isSplit ? 'bg-purple-50' : 'cursor-pointer hover:bg-gray-50'
-                        }`}
+                        onClick={() => {
+                          if (isSplit && 'parentTransactionId' in transaction) {
+                            fetchAndOpenSplitModal(transaction.parentTransactionId);
+                          } else if (!isSplit) {
+                            openEditModal(transaction as Transaction);
+                          }
+                        }}
+                        className="border-b border-gray-100 pb-3 last:border-0 rounded px-2 -mx-2 py-2 transition-colors cursor-pointer hover:bg-gray-50"
                       >
                         <div className="flex justify-between items-start">
                           <div className="flex-1 min-w-0">
@@ -956,6 +1028,7 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
         transactionAmount={transactionToSplit?.amount || 0}
         transactionDescription={transactionToSplit?.merchant || transactionToSplit?.description || ''}
         budgetItems={getAllBudgetItems()}
+        existingSplits={existingSplits}
       />
     </div>
   );

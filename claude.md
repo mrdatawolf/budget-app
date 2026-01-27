@@ -6,8 +6,8 @@ This document contains context for Claude AI to continue development on this bud
 
 A zero-based budget tracking application built with Next.js, TypeScript, and Tailwind CSS. The app features bank account integration via Teller API for automatic transaction imports.
 
-**Current Version:** v0.8.0
-**Last Session:** 2026-01-26
+**Current Version:** v0.9.0
+**Last Session:** 2026-01-27
 
 ## Tech Stack
 
@@ -103,6 +103,24 @@ Budget (month/year)
 - Budget items linked to recurring payments show 🔄 emoji
 - Displayed in BudgetSection.tsx next to item name
 
+## Recent Changes (v0.9.0)
+
+### Split Transaction Editing
+- Click any split transaction to open the SplitTransactionModal pre-populated with existing splits
+- Editable from three locations:
+  1. **Item Detail View**: Click split transactions in the activity list
+  2. **Tracked Transactions Tab**: Click split transactions in the sidebar
+  3. **BudgetSection Dropdown**: Click split transactions in the expanded transaction list under budget items
+- Modal shows "Edit Split" title when editing (vs "Split Transaction" for new)
+- `ExistingSplit` interface added to SplitTransactionModal.tsx
+- Cross-component communication via state lifting in page.tsx (`splitToEdit`, `handleSplitClick`, `clearSplitToEdit`)
+
+### Implementation Details
+- `SplitTransactionModal.tsx`: Added `existingSplits` prop and `isEditMode` logic
+- `BudgetSummary.tsx`: Added `fetchAndOpenSplitModal()` function, `splitToEdit` prop handling
+- `BudgetSection.tsx`: Added `onSplitClick` prop for split transaction click handling
+- `page.tsx`: Added state management for cross-component split editing
+
 ## Key Files and Their Purposes
 
 ### Pages (app/)
@@ -190,6 +208,7 @@ const emojiMap: Record<string, string> = {
 - Full budget CRUD with categories and items
 - Transaction management (add, edit, soft delete, restore)
 - Split transactions across multiple budget items
+- **Edit existing splits** by clicking split transactions (from Item Detail, Tracked tab, or BudgetSection dropdown)
 - Bank integration via Teller
 - Recurring payments with linking to budget items
 - Budget item detail view in sidebar
@@ -235,9 +254,9 @@ When testing recurring payments:
 ## Session Handoff Notes
 
 Last session ended after:
-1. Adding Buffer Flow section to MonthlyReportModal
-2. Removing Income Variance from Buffer Flow per user request
-3. Renaming "= Next Month Buffer" to "Projected Next Month Buffer"
-4. Updating README.md to v0.8.0
+1. Adding split transaction editing feature
+2. Click any split transaction to open pre-populated SplitTransactionModal
+3. Added cross-component communication via state lifting for split editing
+4. Updated README.md and CLAUDE.md to v0.9.0
 
 The app is in a stable state with all recent features working.
