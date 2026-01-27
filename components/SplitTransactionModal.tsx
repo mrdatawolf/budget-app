@@ -10,6 +10,13 @@ interface SplitItem {
   description: string;
 }
 
+export interface ExistingSplit {
+  id: number;
+  budgetItemId: number;
+  amount: number;
+  description?: string | null;
+}
+
 interface SplitTransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -18,6 +25,7 @@ interface SplitTransactionModalProps {
   transactionAmount: number;
   transactionDescription: string;
   budgetItems: { category: string; items: BudgetItem[] }[];
+  existingSplits?: ExistingSplit[];
 }
 
 export default function SplitTransactionModal({
@@ -28,21 +36,34 @@ export default function SplitTransactionModal({
   transactionAmount,
   transactionDescription,
   budgetItems,
+  existingSplits,
 }: SplitTransactionModalProps) {
   const [splits, setSplits] = useState<SplitItem[]>([
     { budgetItemId: '', amount: '', description: '' },
     { budgetItemId: '', amount: '', description: '' },
   ]);
 
-  // Reset form when modal opens
+  const isEditMode = existingSplits && existingSplits.length > 0;
+
+  // Populate form when modal opens
   useEffect(() => {
     if (isOpen) {
-      setSplits([
-        { budgetItemId: '', amount: '', description: '' },
-        { budgetItemId: '', amount: '', description: '' },
-      ]);
+      if (existingSplits && existingSplits.length > 0) {
+        // Pre-populate with existing splits
+        setSplits(existingSplits.map(s => ({
+          budgetItemId: s.budgetItemId.toString(),
+          amount: s.amount.toFixed(2),
+          description: s.description || '',
+        })));
+      } else {
+        // Reset to empty for new split
+        setSplits([
+          { budgetItemId: '', amount: '', description: '' },
+          { budgetItemId: '', amount: '', description: '' },
+        ]);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, existingSplits]);
 
   const addSplit = () => {
     setSplits([...splits, { budgetItemId: '', amount: '', description: '' }]);
@@ -107,7 +128,9 @@ export default function SplitTransactionModal({
   return (
     <div className="fixed inset-0 bg-black/15 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Split Transaction</h2>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">
+          {isEditMode ? 'Edit Split' : 'Split Transaction'}
+        </h2>
         <p className="text-gray-600 mb-4">{transactionDescription}</p>
         <div className="bg-gray-100 rounded-lg p-3 mb-6">
           <div className="flex justify-between items-center">
@@ -218,7 +241,7 @@ export default function SplitTransactionModal({
               disabled={!isBalanced}
               className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Split Transaction
+              {isEditMode ? 'Update Split' : 'Split Transaction'}
             </button>
             <button
               type="button"

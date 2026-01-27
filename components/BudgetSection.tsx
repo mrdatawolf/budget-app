@@ -24,8 +24,8 @@ import { CSS } from "@dnd-kit/utilities";
 interface BudgetSectionProps {
   category: BudgetCategory;
   onRefresh: () => void;
-  isIncome?: boolean;
   onTransactionClick?: (transaction: Transaction) => void;
+  onSplitClick?: (parentTransactionId: string) => void;
   onItemClick?: (item: BudgetItem, categoryName: string) => void;
   selectedItemId?: string;
 }
@@ -43,11 +43,12 @@ interface SortableItemProps {
   onDelete: (id: string) => void;
   onDeleteTransaction: (id: string) => void;
   onTransactionClick?: (transaction: Transaction) => void;
+  onSplitClick?: (parentTransactionId: string) => void;
   setEditingNames: (names: Record<string, string>) => void;
   setEditingValues: (values: Record<string, string | number>) => void;
-  isIncome?: boolean;
   onItemClick?: (item: BudgetItem) => void;
   isSelected?: boolean;
+  showRemaining?: boolean;
 }
 
 function SortableItem({
@@ -61,11 +62,12 @@ function SortableItem({
   onDelete,
   onDeleteTransaction,
   onTransactionClick,
+  onSplitClick,
   setEditingNames,
   setEditingValues,
-  isIncome = false,
   onItemClick,
   isSelected = false,
+  showRemaining = false,
 }: SortableItemProps) {
   const {
     attributes,
@@ -101,7 +103,7 @@ function SortableItem({
           isSelected ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-gray-50'
         }`}
       >
-        <div className="col-span-5 flex items-center gap-2">
+        <div className="col-span-6 flex items-center gap-2">
           {isEditing && (
             <button
               onMouseDown={(e) => {
@@ -216,20 +218,14 @@ function SortableItem({
                 e.currentTarget.blur();
               }
             }}
-            className={`w-full text-right px-2 py-1 border border-transparent hover:bg-gray-50 focus:border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${isIncome && editingValues[item.id] === undefined ? 'blur-sm' : ''}`}
+            className="w-full text-right px-2 py-1 border border-transparent hover:bg-gray-50 focus:border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div className="col-span-2">
           <div className="text-right px-2 py-1 text-gray-700 font-medium">
-            ${item.actual.toFixed(2)}
+            ${showRemaining ? (item.planned - item.actual).toFixed(2) : item.actual.toFixed(2)}
           </div>
         </div>
-        {/* <div className="col-span-2 text-right">
-          <span className={difference < 0 ? "text-red-600" : "text-green-600"}>
-            ${Math.abs(difference).toFixed(2)}
-          </span>
-        </div> */}
-        <div className="col-span-1"></div>
       </div>
 
       {/* Progress bar as bottom border */}
@@ -286,7 +282,8 @@ function SortableItem({
               .map((split) => (
               <div
                 key={`split-${split.id}`}
-                className="flex items-center justify-between text-sm py-1 px-2 bg-purple-50 rounded"
+                onClick={() => onSplitClick?.(split.parentTransactionId)}
+                className="flex items-center justify-between text-sm py-1 px-2 bg-purple-50 rounded cursor-pointer hover:bg-purple-100 transition-colors"
               >
                 <div className="flex-1">
                   <span className="text-gray-600">
@@ -329,8 +326,8 @@ const getCategoryEmoji = (categoryName: string): string => {
 export default function BudgetSection({
   category,
   onRefresh,
-  isIncome = false,
   onTransactionClick,
+  onSplitClick,
   onItemClick,
   selectedItemId,
 }: BudgetSectionProps) {
@@ -341,6 +338,7 @@ export default function BudgetSection({
     {}
   );
   const [editingNames, setEditingNames] = useState<Record<string, string>>({});
+  const [showRemaining, setShowRemaining] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -492,31 +490,35 @@ export default function BudgetSection({
 
   const categoryEmoji = getCategoryEmoji(category.name);
   const isFulfilled = totalPlanned > 0 && Math.abs(totalPlanned - totalActual) < 0.01;
+  const isIncome = category.name === 'Income';
+  const actualLabel = isIncome ? 'Received' : 'Spent';
 
   return (
     <>
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-        <div
-          className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between"
-        >
-          <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
-            <span>{categoryEmoji}</span>
-            <span>{category.name}</span>
-            {isFulfilled && (
-              <span className="text-green-500 text-base" title="Category fulfilled">✓</span>
-            )}
-          </h2>
-          <div className="flex gap-8 text-gray-700">
-            <div className="text-right">
+        <div className="bg-white border-b border-gray-200 px-6 py-4">
+          <div className="grid grid-cols-10 gap-4 items-center">
+            <h2 className="col-span-6 text-xl font-semibold text-gray-800 flex items-center gap-2">
+              <span>{categoryEmoji}</span>
+              <span>{category.name}</span>
+              {isFulfilled && (
+                <span className="text-green-500 text-base" title="Category fulfilled">✓</span>
+              )}
+            </h2>
+            <div className="col-span-2 text-right text-gray-700">
               <div className="text-sm opacity-90">Planned</div>
               <div className="text-lg font-semibold">
                 ${totalPlanned.toFixed(2)}
               </div>
             </div>
-            <div className="text-right">
-              <div className="text-sm opacity-90">Actual</div>
+            <div
+              className="col-span-2 text-right text-gray-700 cursor-pointer hover:bg-gray-50 rounded px-2 py-1 -mx-2 -my-1 transition-colors"
+              onClick={() => setShowRemaining(!showRemaining)}
+              title="Click to toggle between Actual and Remaining"
+            >
+              <div className="text-sm opacity-90">{showRemaining ? 'Remaining' : actualLabel}</div>
               <div className="text-lg font-semibold">
-                ${totalActual.toFixed(2)}
+                ${showRemaining ? (totalPlanned - totalActual).toFixed(2) : totalActual.toFixed(2)}
               </div>
             </div>
           </div>
@@ -530,11 +532,9 @@ export default function BudgetSection({
           {category.items.length > 0 && (
             <div className="space-y-2">
               <div className="grid grid-cols-10 gap-4 text-sm font-semibold text-gray-600 pb-2 border-b">
-                <div className="col-span-5">Item</div>
+                <div className="col-span-6">Item</div>
                 <div className="col-span-2 text-right">Planned</div>
-                <div className="col-span-2 text-right">Actual</div>
-                {/* <div className="col-span-2 text-right">Difference</div> */}
-                <div className="col-span-1"></div>
+                <div className="col-span-2 text-right">{showRemaining ? 'Remaining' : actualLabel}</div>
               </div>
 
               <DndContext
@@ -561,11 +561,12 @@ export default function BudgetSection({
                       onDelete={deleteItem}
                       onDeleteTransaction={uncategorizeTransaction}
                       onTransactionClick={onTransactionClick}
+                      onSplitClick={onSplitClick}
                       setEditingNames={setEditingNames}
                       setEditingValues={setEditingValues}
-                      isIncome={isIncome}
                       onItemClick={(item) => onItemClick?.(item, category.name)}
                       isSelected={selectedItemId === item.id}
+                      showRemaining={showRemaining}
                     />
                   ))}
                 </SortableContext>

@@ -4,8 +4,8 @@ A modern zero-based budget tracking application built with Next.js, TypeScript, 
 
 ## Project Status
 
-**Current Version:** v0.8.0 - Recurring Payments & Budget Item Details
-**Last Updated:** 2026-01-26
+**Current Version:** v0.9.0 - Split Transaction Editing & UI Improvements
+**Last Updated:** 2026-01-27
 
 ### Tech Stack
 - Next.js 16.x (App Router)
@@ -115,6 +115,12 @@ Accessible via sidebar navigation:
 - Optional description for each split portion
 - Parent transactions with splits are hidden from "New" list
 - Split portions appear in Tracked tab with parent transaction info
+- **Edit existing splits** by clicking any split transaction:
+  - From the Item Detail View activity list
+  - From the Tracked Transactions tab in the sidebar
+  - From the expanded transaction dropdown under budget items
+- Opens the same Split Transaction modal, pre-populated with current split allocations
+- Modify amounts, change budget items, add/remove splits, then save to update
 
 #### Monthly Report
 Comprehensive end-of-month budget review accessed via Insights > Monthly Summary:

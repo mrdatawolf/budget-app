@@ -89,12 +89,36 @@ export async function DELETE(request: NextRequest) {
   return NextResponse.json({ success: true });
 }
 
-// GET - Get deleted transactions for a month/year
+// GET - Get a single transaction by ID or deleted transactions for a month/year
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
+  const id = searchParams.get('id');
   const month = searchParams.get('month');
   const year = searchParams.get('year');
   const deleted = searchParams.get('deleted');
+
+  // Fetch single transaction by ID
+  if (id) {
+    const [transaction] = await db
+      .select()
+      .from(transactions)
+      .where(eq(transactions.id, parseInt(id)));
+
+    if (!transaction) {
+      return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      id: transaction.id.toString(),
+      budgetItemId: transaction.budgetItemId?.toString() || null,
+      linkedAccountId: transaction.linkedAccountId,
+      date: transaction.date,
+      description: transaction.description,
+      amount: transaction.amount,
+      type: transaction.type,
+      merchant: transaction.merchant,
+    });
+  }
 
   // Only return deleted transactions if explicitly requested
   if (deleted === 'true') {
