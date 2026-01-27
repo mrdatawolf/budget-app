@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { recurringPayments, budgetItems, transactions, splitTransactions } from '@/db/schema';
 import { eq, desc, and, isNull } from 'drizzle-orm';
 import { RecurringPayment, RecurringFrequency, CategoryType } from '@/types/budget';
+import { requireAuth, isAuthError } from '@/lib/auth';
 
 // Helper to calculate months in a frequency cycle
 function getMonthsInCycle(frequency: RecurringFrequency): number {
@@ -64,9 +65,13 @@ function transformToRecurringPayment(
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authResult = await requireAuth();
+  if (isAuthError(authResult)) return authResult.error;
+  const { userId } = authResult;
+
   const payments = await db.query.recurringPayments.findMany({
-    where: eq(recurringPayments.isActive, true),
+    where: and(eq(recurringPayments.userId, userId), eq(recurringPayments.isActive, true)),
     orderBy: [desc(recurringPayments.nextDueDate)],
   });
 
@@ -128,6 +133,10 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const authResult = await requireAuth();
+  if (isAuthError(authResult)) return authResult.error;
+  const { userId } = authResult;
+
   const body = await request.json();
   const { name, amount, frequency, nextDueDate, categoryType, budgetItemId } = body;
 
@@ -138,6 +147,7 @@ export async function POST(request: NextRequest) {
   const [payment] = await db
     .insert(recurringPayments)
     .values({
+      userId,
       name,
       amount: parseFloat(amount),
       frequency,
@@ -160,11 +170,24 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const authResult = await requireAuth();
+  if (isAuthError(authResult)) return authResult.error;
+  const { userId } = authResult;
+
   const body = await request.json();
   const { id, name, amount, frequency, nextDueDate, fundedAmount, categoryType, isActive } = body;
 
   if (!id) {
     return NextResponse.json({ error: 'Missing payment id' }, { status: 400 });
+  }
+
+  // Verify ownership
+  const existing = await db.query.recurringPayments.findFirst({
+    where: and(eq(recurringPayments.id, parseInt(id)), eq(recurringPayments.userId, userId)),
+  });
+
+  if (!existing) {
+    return NextResponse.json({ error: 'Recurring payment not found' }, { status: 404 });
   }
 
   const updates: Partial<typeof recurringPayments.$inferInsert> = {
@@ -189,6 +212,10 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const authResult = await requireAuth();
+  if (isAuthError(authResult)) return authResult.error;
+  const { userId } = authResult;
+
   const searchParams = request.nextUrl.searchParams;
   const id = searchParams.get('id');
 
@@ -197,6 +224,15 @@ export async function DELETE(request: NextRequest) {
   }
 
   const paymentId = parseInt(id);
+
+  // Verify ownership
+  const existing = await db.query.recurringPayments.findFirst({
+    where: and(eq(recurringPayments.id, paymentId), eq(recurringPayments.userId, userId)),
+  });
+
+  if (!existing) {
+    return NextResponse.json({ error: 'Recurring payment not found' }, { status: 404 });
+  }
 
   // First, unlink any budget items that reference this recurring payment
   await db

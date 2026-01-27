@@ -6,7 +6,7 @@ This document contains context for Claude AI to continue development on this bud
 
 A zero-based budget tracking application built with Next.js, TypeScript, and Tailwind CSS. The app features bank account integration via Teller API for automatic transaction imports.
 
-**Current Version:** v0.9.0
+**Current Version:** v1.0.0
 **Last Session:** 2026-01-27
 
 ## Tech Stack
@@ -16,6 +16,7 @@ A zero-based budget tracking application built with Next.js, TypeScript, and Tai
 - **Styling:** Tailwind CSS
 - **ORM:** Drizzle ORM
 - **Database:** SQLite (better-sqlite3)
+- **Authentication:** Clerk (@clerk/nextjs)
 - **Bank Integration:** Teller API
 - **Icons:** react-icons (FaXxx from react-icons/fa, HiXxx from react-icons/hi2)
 
@@ -48,7 +49,7 @@ Budget (month/year)
 ### Key Tables
 
 1. **budgets** - Monthly budget containers
-   - id, month, year, buffer, createdAt
+   - id, **userId**, month, year, buffer, createdAt
 
 2. **budget_categories** - Categories within each budget
    - id, budgetId, categoryType, name, order
@@ -63,9 +64,15 @@ Budget (month/year)
    - id, parentTransactionId, budgetItemId, amount, description
 
 6. **recurring_payments** - Recurring bills and subscriptions
-   - id, name, amount, frequency, nextDueDate, fundedAmount, categoryType, isActive
+   - id, **userId**, name, amount, frequency, nextDueDate, fundedAmount, categoryType, isActive
 
 7. **linked_accounts** - Connected bank accounts from Teller
+   - id, **userId**, tellerAccountId, accessToken, institutionName, etc.
+
+### User Data Isolation
+- `budgets`, `linked_accounts`, and `recurring_payments` have `userId` columns (Clerk user ID)
+- Child tables (budgetCategories, budgetItems, transactions, splitTransactions) inherit ownership through parent relationships
+- All API routes verify ownership before returning/modifying data
 
 ### Important Relationships
 
@@ -121,6 +128,34 @@ Budget (month/year)
 - `BudgetSection.tsx`: Added `onSplitClick` prop for split transaction click handling
 - `page.tsx`: Added state management for cross-component split editing
 
+## Recent Changes (v1.0.0)
+
+### Clerk Authentication
+- Full user authentication via Clerk (@clerk/nextjs)
+- Sign-in and sign-up pages with Clerk components
+- Route protection via middleware - all routes except /sign-in and /sign-up require authentication
+- UserButton in sidebar footer for account management and sign-out
+
+### Multi-User Support
+- `userId` column added to: `budgets`, `linked_accounts`, `recurring_payments`
+- All API routes check authentication and scope queries to the authenticated user
+- New users automatically get a fresh budget created on first visit
+- Existing data can be claimed via `/api/auth/claim-data` endpoint
+
+### Auth Implementation Details
+- `middleware.ts`: Uses `clerkMiddleware` with `createRouteMatcher` for route protection
+- `lib/auth.ts`: Helper functions `requireAuth()` and `isAuthError()` for API routes
+- All 11 API route files updated with auth checks and userId scoping
+- Migration script: `scripts/migrate-add-userid.ts` for adding userId columns to existing DB
+
+### Environment Variables (Clerk)
+```env
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+```
+
 ## Key Files and Their Purposes
 
 ### Pages (app/)
@@ -128,13 +163,15 @@ Budget (month/year)
 - `recurring/page.tsx` - Recurring payments management
 - `settings/page.tsx` - Bank account management (Teller)
 - `insights/page.tsx` - Insights hub with Monthly Summary access
+- `sign-in/[[...sign-in]]/page.tsx` - Clerk sign-in page
+- `sign-up/[[...sign-up]]/page.tsx` - Clerk sign-up page
 
 ### Components (components/)
 - `BudgetSection.tsx` - Renders a single category with its items, handles drag-drop reorder
 - `BudgetSummary.tsx` - Right sidebar with Summary/Transactions tabs AND budget item detail view
 - `MonthlyReportModal.tsx` - Monthly report with Buffer Flow section
 - `DashboardLayout.tsx` - Main layout wrapper with sidebar
-- `Sidebar.tsx` - Collapsible navigation sidebar
+- `Sidebar.tsx` - Collapsible navigation sidebar with UserButton
 - `AddTransactionModal.tsx` - Add/edit transaction modal
 - `SplitTransactionModal.tsx` - Split transaction interface
 
@@ -144,15 +181,37 @@ Budget (month/year)
 - `transactions/route.ts` - CRUD with soft delete support
 - `transactions/split/route.ts` - Split transaction creation
 - `teller/` - Bank integration endpoints
+- `auth/claim-data/route.ts` - Claim unclaimed data for migrating users
 
 ### Utilities (lib/)
 - `budgetHelpers.ts` - `transformDbBudgetToAppBudget()` transforms DB data to app types
 - `teller.ts` - Teller API client
+- `auth.ts` - Authentication helpers (`requireAuth()`, `isAuthError()`)
+
+### Root Files
+- `middleware.ts` - Clerk middleware for route protection
 
 ### Types (types/)
 - `budget.ts` - All TypeScript interfaces (Budget, BudgetItem, Transaction, etc.)
 
 ## Important Code Patterns
+
+### API Route Authentication
+All API routes follow this pattern:
+```typescript
+import { requireAuth, isAuthError } from '@/lib/auth';
+
+export async function GET(request: NextRequest) {
+  const authResult = await requireAuth();
+  if (isAuthError(authResult)) return authResult.error;
+  const { userId } = authResult;
+
+  // Use userId in queries
+  const data = await db.query.budgets.findFirst({
+    where: and(eq(budgets.userId, userId), eq(budgets.month, month)),
+  });
+}
+```
 
 ### Fetching Budget
 ```typescript
@@ -205,6 +264,8 @@ const emojiMap: Record<string, string> = {
 ## Known State / Pending Items
 
 ### Working Features
+- **User authentication** via Clerk (sign-in, sign-up, sign-out)
+- **Multi-user support** - each user sees only their own data
 - Full budget CRUD with categories and items
 - Transaction management (add, edit, soft delete, restore)
 - Split transactions across multiple budget items
@@ -251,12 +312,29 @@ When testing recurring payments:
 - Overspent = sum of (actual - planned) where actual > planned
 - Only expense categories are included (not income)
 
+## Common Issues & Solutions (Auth)
+
+### Clock Skew Error
+- Clerk JWT validation fails if system clock is off by more than a few seconds
+- Fix: Sync system clock (Windows: Settings > Time > Sync now)
+- Error message: "JWT cannot be used prior to not before date claim (nbf)"
+
+### Redirect Loop After Sign-in
+- Usually caused by clock skew (see above)
+- Can also be caused by conflicting redirect props on SignIn component
+- Current setup uses `fallbackRedirectUrl="/"` which respects the redirect_url query param
+
+### Claiming Existing Data
+- Use `/api/auth/claim-data` POST endpoint to claim unclaimed records (userId = '')
+- GET endpoint shows count of unclaimed records
+
 ## Session Handoff Notes
 
 Last session ended after:
-1. Adding split transaction editing feature
-2. Click any split transaction to open pre-populated SplitTransactionModal
-3. Added cross-component communication via state lifting for split editing
-4. Updated README.md and CLAUDE.md to v0.9.0
+1. Adding Clerk authentication (v1.0.0)
+2. Multi-user support with userId columns on key tables
+3. All API routes protected and scoped to authenticated user
+4. Fixed redirect loop issue (was caused by system clock skew)
+5. Updated README.md and CLAUDE.md to v1.0.0
 
-The app is in a stable state with all recent features working.
+The app is in a stable state with authentication fully working.

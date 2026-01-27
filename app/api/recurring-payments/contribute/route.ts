@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { recurringPayments } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
+import { requireAuth, isAuthError } from '@/lib/auth';
 
 // POST /api/recurring-payments/contribute
 // Adds a contribution to a recurring payment's funded amount
 export async function POST(request: NextRequest) {
+  const authResult = await requireAuth();
+  if (isAuthError(authResult)) return authResult.error;
+  const { userId } = authResult;
+
   const body = await request.json();
   const { id, amount } = body;
 
@@ -13,9 +18,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
-  // Get current payment
+  // Get current payment and verify ownership
   const payment = await db.query.recurringPayments.findFirst({
-    where: eq(recurringPayments.id, parseInt(id)),
+    where: and(eq(recurringPayments.id, parseInt(id)), eq(recurringPayments.userId, userId)),
   });
 
   if (!payment) {

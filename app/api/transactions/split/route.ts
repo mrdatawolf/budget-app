@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { transactions, splitTransactions } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { transactions, splitTransactions, budgetItems, linkedAccounts } from '@/db/schema';
+import { eq, and } from 'drizzle-orm';
+import { requireAuth, isAuthError } from '@/lib/auth';
 
 interface SplitItem {
   budgetItemId: number;
@@ -9,14 +10,67 @@ interface SplitItem {
   description?: string;
 }
 
+// Helper to verify transaction ownership (via budgetItem or linkedAccount)
+async function verifyTransactionOwnership(transactionId: number, userId: string): Promise<boolean> {
+  const txn = await db.query.transactions.findFirst({
+    where: eq(transactions.id, transactionId),
+    with: {
+      budgetItem: {
+        with: {
+          category: {
+            with: { budget: true },
+          },
+        },
+      },
+      linkedAccount: true,
+    },
+  });
+
+  if (!txn) return false;
+
+  if (txn.budgetItem?.category?.budget?.userId === userId) return true;
+  if (txn.linkedAccount?.userId === userId) return true;
+
+  return false;
+}
+
+// Helper to verify budget item ownership
+async function verifyBudgetItemOwnership(budgetItemId: number, userId: string): Promise<boolean> {
+  const item = await db.query.budgetItems.findFirst({
+    where: eq(budgetItems.id, budgetItemId),
+    with: {
+      category: {
+        with: { budget: true },
+      },
+    },
+  });
+  return item?.category?.budget?.userId === userId;
+}
+
 // POST - Create splits for a transaction
 export async function POST(request: NextRequest) {
   try {
+    const authResult = await requireAuth();
+    if (isAuthError(authResult)) return authResult.error;
+    const { userId } = authResult;
+
     const body = await request.json();
     const { transactionId, splits } = body as { transactionId: number; splits: SplitItem[] };
 
     if (!transactionId || !splits || !Array.isArray(splits) || splits.length === 0) {
       return NextResponse.json({ error: 'Missing transactionId or splits' }, { status: 400 });
+    }
+
+    // Verify transaction ownership
+    if (!(await verifyTransactionOwnership(transactionId, userId))) {
+      return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
+    }
+
+    // Verify ownership of all budget items in splits
+    for (const split of splits) {
+      if (!(await verifyBudgetItemOwnership(split.budgetItemId, userId))) {
+        return NextResponse.json({ error: 'Budget item not found' }, { status: 404 });
+      }
     }
 
     // Get the parent transaction
@@ -77,11 +131,20 @@ export async function POST(request: NextRequest) {
 // GET - Get splits for a transaction
 export async function GET(request: NextRequest) {
   try {
+    const authResult = await requireAuth();
+    if (isAuthError(authResult)) return authResult.error;
+    const { userId } = authResult;
+
     const { searchParams } = new URL(request.url);
     const transactionId = searchParams.get('transactionId');
 
     if (!transactionId) {
       return NextResponse.json({ error: 'Missing transactionId' }, { status: 400 });
+    }
+
+    // Verify transaction ownership
+    if (!(await verifyTransactionOwnership(parseInt(transactionId), userId))) {
+      return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
     }
 
     const splits = await db
@@ -99,12 +162,26 @@ export async function GET(request: NextRequest) {
 // DELETE - Remove splits and optionally assign to a single budget item (unsplit)
 export async function DELETE(request: NextRequest) {
   try {
+    const authResult = await requireAuth();
+    if (isAuthError(authResult)) return authResult.error;
+    const { userId } = authResult;
+
     const { searchParams } = new URL(request.url);
     const transactionId = searchParams.get('transactionId');
     const budgetItemId = searchParams.get('budgetItemId'); // Optional: assign to this item after unsplitting
 
     if (!transactionId) {
       return NextResponse.json({ error: 'Missing transactionId' }, { status: 400 });
+    }
+
+    // Verify transaction ownership
+    if (!(await verifyTransactionOwnership(parseInt(transactionId), userId))) {
+      return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
+    }
+
+    // If budgetItemId provided, verify ownership
+    if (budgetItemId && !(await verifyBudgetItemOwnership(parseInt(budgetItemId), userId))) {
+      return NextResponse.json({ error: 'Budget item not found' }, { status: 404 });
     }
 
     // Delete all splits

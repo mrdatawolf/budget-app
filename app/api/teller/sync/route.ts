@@ -3,24 +3,29 @@ import { db } from '@/db';
 import { linkedAccounts, transactions, splitTransactions } from '@/db/schema';
 import { eq, and, isNull, notInArray } from 'drizzle-orm';
 import { createTellerClient, TellerTransaction } from '@/lib/teller';
+import { requireAuth, isAuthError } from '@/lib/auth';
 
 // POST - Sync transactions from linked accounts
 export async function POST(request: NextRequest) {
   try {
+    const authResult = await requireAuth();
+    if (isAuthError(authResult)) return authResult.error;
+    const { userId } = authResult;
+
     const body = await request.json();
     const { accountId, startDate, endDate } = body;
 
-    // Get linked accounts to sync
+    // Get linked accounts to sync (scoped to user)
     let accountsToSync;
     if (accountId) {
-      // Sync specific account
+      // Sync specific account (verify ownership)
       accountsToSync = await db
         .select()
         .from(linkedAccounts)
-        .where(eq(linkedAccounts.id, parseInt(accountId)));
+        .where(and(eq(linkedAccounts.id, parseInt(accountId)), eq(linkedAccounts.userId, userId)));
     } else {
-      // Sync all accounts
-      accountsToSync = await db.select().from(linkedAccounts);
+      // Sync all user's accounts
+      accountsToSync = await db.select().from(linkedAccounts).where(eq(linkedAccounts.userId, userId));
     }
 
     if (accountsToSync.length === 0) {
@@ -125,9 +130,24 @@ export async function POST(request: NextRequest) {
 // GET - Get uncategorized transactions (not assigned to any budget item)
 export async function GET(request: NextRequest) {
   try {
+    const authResult = await requireAuth();
+    if (isAuthError(authResult)) return authResult.error;
+    const { userId } = authResult;
+
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
     const year = searchParams.get('year');
+
+    // Get user's linked account IDs for filtering
+    const userAccounts = await db
+      .select({ id: linkedAccounts.id })
+      .from(linkedAccounts)
+      .where(eq(linkedAccounts.userId, userId));
+    const userAccountIds = userAccounts.map(a => a.id);
+
+    if (userAccountIds.length === 0) {
+      return NextResponse.json([]);
+    }
 
     // Get IDs of transactions that have been split (these should not appear as uncategorized)
     const splitParentIds = await db
@@ -135,33 +155,59 @@ export async function GET(request: NextRequest) {
       .from(splitTransactions);
     const splitParentIdList = splitParentIds.map(s => s.parentId);
 
-    // Get transactions that have no budgetItemId (uncategorized), are not deleted, and are not split
-    let query = db
-      .select()
-      .from(transactions)
-      .where(and(
+    // Get transactions that:
+    // - Belong to user's linked accounts
+    // - Have no budgetItemId (uncategorized)
+    // - Are not deleted
+    // - Are not split
+    const uncategorizedTransactions = await db.query.transactions.findMany({
+      where: and(
         isNull(transactions.budgetItemId),
         isNull(transactions.deletedAt),
         splitParentIdList.length > 0
           ? notInArray(transactions.id, splitParentIdList)
           : undefined
-      ));
+      ),
+      with: {
+        linkedAccount: true,
+      },
+    });
 
-    const uncategorizedTransactions = await query;
+    // Filter to only user's transactions
+    const userTransactions = uncategorizedTransactions.filter(
+      txn => txn.linkedAccount && userAccountIds.includes(txn.linkedAccount.id)
+    );
 
     // Filter by month/year if provided
-    let filtered = uncategorizedTransactions;
+    let filtered = userTransactions;
     if (month !== null && year !== null) {
       const monthNum = parseInt(month);
       const yearNum = parseInt(year);
-      filtered = uncategorizedTransactions.filter(txn => {
+      filtered = userTransactions.filter(txn => {
         // Parse date as local time to avoid timezone shift (YYYY-MM-DD format)
         const [txnYear, txnMonth] = txn.date.split('-').map(Number);
         return (txnMonth - 1) === monthNum && txnYear === yearNum;
       });
     }
 
-    return NextResponse.json(filtered);
+    // Map to simpler format
+    const result = filtered.map(txn => ({
+      id: txn.id,
+      budgetItemId: txn.budgetItemId,
+      linkedAccountId: txn.linkedAccountId,
+      date: txn.date,
+      description: txn.description,
+      amount: txn.amount,
+      type: txn.type,
+      merchant: txn.merchant,
+      tellerTransactionId: txn.tellerTransactionId,
+      tellerAccountId: txn.tellerAccountId,
+      status: txn.status,
+      deletedAt: txn.deletedAt,
+      createdAt: txn.createdAt,
+    }));
+
+    return NextResponse.json(result);
   } catch (error) {
     console.error('Error fetching uncategorized transactions:', error);
     return NextResponse.json({ error: 'Failed to fetch uncategorized transactions' }, { status: 500 });

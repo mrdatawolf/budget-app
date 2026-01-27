@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { budgets, budgetCategories, budgetItems, recurringPayments } from '@/db/schema';
 import { eq, and, asc } from 'drizzle-orm';
+import { requireAuth, isAuthError } from '@/lib/auth';
 
 // Helper to calculate monthly contribution based on frequency
 function getMonthlyContribution(amount: number, frequency: string): number {
@@ -26,6 +27,10 @@ const CATEGORY_TYPES = [
 ];
 
 export async function GET(request: NextRequest) {
+  const authResult = await requireAuth();
+  if (isAuthError(authResult)) return authResult.error;
+  const { userId } = authResult;
+
   const searchParams = request.nextUrl.searchParams;
   const month = parseInt(searchParams.get('month') || '');
   const year = parseInt(searchParams.get('year') || '');
@@ -35,7 +40,7 @@ export async function GET(request: NextRequest) {
   }
 
   let budget = await db.query.budgets.findFirst({
-    where: and(eq(budgets.month, month), eq(budgets.year, year)),
+    where: and(eq(budgets.userId, userId), eq(budgets.month, month), eq(budgets.year, year)),
     with: {
       categories: {
         with: {
@@ -56,7 +61,7 @@ export async function GET(request: NextRequest) {
   });
 
   if (!budget) {
-    const [newBudget] = await db.insert(budgets).values({ month, year }).returning();
+    const [newBudget] = await db.insert(budgets).values({ userId, month, year }).returning();
 
     for (const cat of CATEGORY_TYPES) {
       await db.insert(budgetCategories).values({
@@ -91,7 +96,7 @@ export async function GET(request: NextRequest) {
   // Sync recurring payments to budget items
   if (budget) {
     const activeRecurring = await db.query.recurringPayments.findMany({
-      where: eq(recurringPayments.isActive, true),
+      where: and(eq(recurringPayments.userId, userId), eq(recurringPayments.isActive, true)),
     });
 
     let itemsCreated = false;
@@ -153,11 +158,24 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const authResult = await requireAuth();
+  if (isAuthError(authResult)) return authResult.error;
+  const { userId } = authResult;
+
   const body = await request.json();
   const { id, buffer } = body;
 
   if (!id || buffer === undefined) {
     return NextResponse.json({ error: 'Missing id or buffer' }, { status: 400 });
+  }
+
+  // Verify ownership
+  const existing = await db.query.budgets.findFirst({
+    where: and(eq(budgets.id, id), eq(budgets.userId, userId)),
+  });
+
+  if (!existing) {
+    return NextResponse.json({ error: 'Budget not found' }, { status: 404 });
   }
 
   await db.update(budgets).set({ buffer }).where(eq(budgets.id, id));

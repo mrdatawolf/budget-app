@@ -3,6 +3,7 @@ import { relations } from 'drizzle-orm';
 
 export const budgets = sqliteTable('budgets', {
   id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: text('user_id').notNull().default(''), // Clerk user ID
   month: integer('month').notNull(),
   year: integer('year').notNull(),
   buffer: real('buffer').notNull().default(0),
@@ -59,6 +60,7 @@ export const splitTransactions = sqliteTable('split_transactions', {
 // Linked bank accounts from Teller
 export const linkedAccounts = sqliteTable('linked_accounts', {
   id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: text('user_id').notNull().default(''), // Clerk user ID
   tellerAccountId: text('teller_account_id').notNull().unique(),
   tellerEnrollmentId: text('teller_enrollment_id').notNull(),
   accessToken: text('access_token').notNull(),
@@ -125,6 +127,7 @@ export const linkedAccountsRelations = relations(linkedAccounts, ({ many }) => (
 // Recurring payments for subscriptions and memberships
 export const recurringPayments = sqliteTable('recurring_payments', {
   id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: text('user_id').notNull().default(''), // Clerk user ID
   name: text('name').notNull(),
   amount: real('amount').notNull(), // Total amount due when payment hits
   frequency: text('frequency').notNull().$type<'monthly' | 'quarterly' | 'semi-annually' | 'annually'>(),

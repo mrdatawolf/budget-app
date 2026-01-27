@@ -4,7 +4,7 @@ A modern zero-based budget tracking application built with Next.js, TypeScript, 
 
 ## Project Status
 
-**Current Version:** v0.9.0 - Split Transaction Editing & UI Improvements
+**Current Version:** v1.0.0 - User Authentication & Multi-User Support
 **Last Updated:** 2026-01-27
 
 ### Tech Stack
@@ -14,11 +14,19 @@ A modern zero-based budget tracking application built with Next.js, TypeScript, 
 - ESLint
 - Drizzle ORM
 - SQLite (better-sqlite3)
+- Clerk (authentication)
 - Teller API (bank integration)
 - React Icons (react-icons)
 - React Hooks (useState, useEffect, useCallback)
 
 ### Features
+
+#### User Authentication
+- Sign in / Sign up via Clerk
+- Multi-user support - each user sees only their own data
+- Secure route protection - all pages require authentication
+- User account management via sidebar UserButton
+- MFA support (configurable in Clerk dashboard)
 
 #### Dashboard Layout
 - Collapsible sidebar navigation
@@ -166,6 +174,8 @@ Comprehensive end-of-month budget review accessed via Insights > Monthly Summary
 | `/recurring` | Recurring | Manage recurring payments and subscriptions |
 | `/settings` | Accounts | Bank account management and Teller integration |
 | `/insights` | Insights | Insights hub with Monthly Summary and future analytics |
+| `/sign-in` | Sign In | Clerk authentication - sign in page |
+| `/sign-up` | Sign Up | Clerk authentication - sign up page |
 
 ### Database
 
@@ -180,13 +190,15 @@ npm run db:migrate   # Run migrations
 ```
 
 **Database Schema:**
-- **budgets** - Monthly budget containers (month, year, buffer amount)
+- **budgets** - Monthly budget containers (userId, month, year, buffer amount)
 - **budget_categories** - Categories within each budget (Income, Giving, etc.)
 - **budget_items** - Individual line items (e.g., "Gas", "Groceries"), with optional link to recurring payments
 - **transactions** - Individual transactions linked to budget items
 - **split_transactions** - Child allocations when a transaction is split across categories
-- **linked_accounts** - Connected bank accounts from Teller
-- **recurring_payments** - Recurring bills and subscriptions with frequency, amount, and due dates
+- **linked_accounts** - Connected bank accounts from Teller (userId, accessToken, institution info)
+- **recurring_payments** - Recurring bills and subscriptions (userId, frequency, amount, due dates)
+
+**Note:** `userId` columns store the Clerk user ID for multi-user data isolation.
 
 ### How to Use
 
@@ -202,8 +214,15 @@ npm run db:migrate   # Run migrations
 
 ### Environment Variables
 
-For bank integration, you'll need Teller API credentials:
+**Authentication (Clerk):**
+```env
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+```
 
+**Bank Integration (Teller):**
 ```env
 NEXT_PUBLIC_TELLER_APP_ID=your_application_id
 TELLER_ENVIRONMENT=sandbox  # or development, production
@@ -226,6 +245,8 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 budget-app/
 ├── app/
 │   ├── api/
+│   │   ├── auth/
+│   │   │   └── claim-data/       # Claim unclaimed data for user
 │   │   ├── budgets/              # Budget CRUD operations
 │   │   ├── budget-items/         # Budget item management
 │   │   │   └── reorder/          # Drag-and-drop reorder endpoint
@@ -241,7 +262,13 @@ budget-app/
 │   │   └── page.tsx              # Recurring payments page
 │   ├── settings/
 │   │   └── page.tsx              # Accounts page
-│   ├── layout.tsx                # Root layout
+│   ├── sign-in/
+│   │   └── [[...sign-in]]/
+│   │       └── page.tsx          # Clerk sign-in page
+│   ├── sign-up/
+│   │   └── [[...sign-up]]/
+│   │       └── page.tsx          # Clerk sign-up page
+│   ├── layout.tsx                # Root layout with ClerkProvider
 │   └── page.tsx                  # Main budget page
 ├── components/
 │   ├── AddTransactionModal.tsx   # Add/Edit transaction modal
@@ -251,15 +278,20 @@ budget-app/
 │   ├── BufferSection.tsx         # Buffer amount editor
 │   ├── DashboardLayout.tsx       # Main layout wrapper
 │   ├── MonthlyReportModal.tsx    # Monthly report modal
-│   ├── Sidebar.tsx               # Collapsible navigation sidebar
+│   ├── Sidebar.tsx               # Collapsible navigation with UserButton
 │   ├── SplitTransactionModal.tsx # Split transaction interface
 │   └── TransactionModal.tsx      # Transaction details modal
 ├── db/
 │   ├── index.ts                  # Database connection
 │   └── schema.ts                 # Drizzle schema definitions
 ├── lib/
+│   ├── auth.ts                   # Authentication helpers
 │   ├── budgetHelpers.ts          # Data transformation utilities
 │   └── teller.ts                 # Teller API client
+├── scripts/
+│   ├── check-schema.ts           # Verify database schema
+│   └── migrate-add-userid.ts     # Migration for userId columns
+├── middleware.ts                 # Clerk route protection
 └── types/
     └── budget.ts                 # TypeScript type definitions
 ```
