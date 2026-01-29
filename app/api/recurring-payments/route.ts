@@ -33,14 +33,15 @@ function transformToRecurringPayment(
   isMonthly?: boolean
 ): RecurringPayment {
   const monthsInCycle = getMonthsInCycle(record.frequency as RecurringFrequency);
-  const monthlyContribution = record.amount / monthsInCycle;
+  const amountNum = parseFloat(String(record.amount));
+  const monthlyContribution = amountNum / monthsInCycle;
 
   // Use calculated funded amount from transactions if provided, otherwise use DB value
-  const fundedAmount = calculatedFundedAmount !== undefined ? calculatedFundedAmount : record.fundedAmount;
+  const fundedAmount = calculatedFundedAmount !== undefined ? calculatedFundedAmount : parseFloat(String(record.fundedAmount));
 
   // For monthly: progress is against the monthly amount (same as total)
   // For non-monthly: progress is against the TOTAL amount (cumulative across months)
-  const targetAmount = isMonthly ? monthlyContribution : record.amount;
+  const targetAmount = isMonthly ? monthlyContribution : amountNum;
   const percentFunded = targetAmount > 0 ? (fundedAmount / targetAmount) * 100 : 0;
 
   // isPaid: for monthly, funded >= amount; for non-monthly, cumulative funded >= total amount
@@ -49,7 +50,7 @@ function transformToRecurringPayment(
   return {
     id: record.id,
     name: record.name,
-    amount: record.amount,
+    amount: amountNum,
     frequency: record.frequency as RecurringFrequency,
     nextDueDate: record.nextDueDate,
     fundedAmount: fundedAmount,
@@ -107,8 +108,8 @@ export async function GET(request: NextRequest) {
       for (const item of linkedItems) {
         if (item.category?.budget?.month === currentMonth &&
             item.category?.budget?.year === currentYear) {
-          const txnTotal = item.transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
-          const splitTotal = item.splitTransactions.reduce((sum, s) => sum + Math.abs(s.amount), 0);
+          const txnTotal = item.transactions.reduce((sum, t) => sum + Math.abs(parseFloat(String(t.amount))), 0);
+          const splitTotal = item.splitTransactions.reduce((sum, s) => sum + Math.abs(parseFloat(String(s.amount))), 0);
           fundedAmount = txnTotal + splitTotal;
           break;
         }
@@ -117,8 +118,8 @@ export async function GET(request: NextRequest) {
       // For non-monthly: sum transactions across ALL budget items (all months)
       // This accumulates contributions toward the total payment amount
       for (const item of linkedItems) {
-        const txnTotal = item.transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
-        const splitTotal = item.splitTransactions.reduce((sum, s) => sum + Math.abs(s.amount), 0);
+        const txnTotal = item.transactions.reduce((sum, t) => sum + Math.abs(parseFloat(String(t.amount))), 0);
+        const splitTotal = item.splitTransactions.reduce((sum, s) => sum + Math.abs(parseFloat(String(s.amount))), 0);
         fundedAmount += txnTotal + splitTotal;
       }
     }
@@ -149,11 +150,11 @@ export async function POST(request: NextRequest) {
     .values({
       userId,
       name,
-      amount: parseFloat(amount),
+      amount: String(parseFloat(amount)),
       frequency,
       nextDueDate,
       categoryType: categoryType || null,
-      fundedAmount: 0,
+      fundedAmount: '0',
       isActive: true,
     })
     .returning();
@@ -195,10 +196,10 @@ export async function PUT(request: NextRequest) {
   };
 
   if (name !== undefined) updates.name = name;
-  if (amount !== undefined) updates.amount = parseFloat(amount);
+  if (amount !== undefined) updates.amount = String(parseFloat(amount));
   if (frequency !== undefined) updates.frequency = frequency;
   if (nextDueDate !== undefined) updates.nextDueDate = nextDueDate;
-  if (fundedAmount !== undefined) updates.fundedAmount = parseFloat(fundedAmount);
+  if (fundedAmount !== undefined) updates.fundedAmount = String(parseFloat(fundedAmount));
   if (categoryType !== undefined) updates.categoryType = categoryType || null;
   if (isActive !== undefined) updates.isActive = isActive;
 

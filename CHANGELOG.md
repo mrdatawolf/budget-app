@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.0] - 2026-01-29 - Supabase Migration & Mobile Prep
+
+### Added
+- **Supabase PostgreSQL** — migrated from SQLite to Supabase for multi-device sync
+- **Capacitor** — live server mode for future iOS/Android builds
+- **Previous month transactions** — sidebar "New" tab shows last 3 days of previous month with month headings
+- **Data migration script** (`scripts/migrate-data.ts`) — migrates all 7 tables with FK ordering and sequence resets
+
+### Changed
+- **Database driver:** `better-sqlite3` → `postgres` via `drizzle-orm/postgres-js`
+- **Schema:** All tables converted from `sqliteTable` to `pgTable` with PostgreSQL types
+- **Teller sync optimized** — batch queries replace N+1 pattern (~60s → fast)
+- **Numeric handling:** All `numeric` column reads wrapped with `parseFloat(String())` across 10+ files
+
+### Fixed
+- **Monthly Report** — Saving category no longer counted as expense in totals
+- **Split transaction edit** — `.toFixed()` error fixed for PostgreSQL numeric strings
+- **Claim data endpoint** — `.changes` replaced with `.returning().length` for PostgreSQL
+
+### Architecture Decision
+- **Phase 5 (Edge Functions) skipped** — Next.js API routes connect directly to Supabase PostgreSQL via Drizzle ORM. No functional benefit to migrating to Deno-based Edge Functions. See CLAUDE.md for full rationale.
+
 ## [1.3.1] - 2026-01-29 - Build Fix
 
 ### Fixed

@@ -24,22 +24,25 @@ export async function POST(request: NextRequest) {
   const budgetResult = await db
     .update(budgets)
     .set({ userId })
-    .where(eq(budgets.userId, ''));
-  results.budgets = budgetResult.changes;
+    .where(eq(budgets.userId, ''))
+    .returning({ id: budgets.id });
+  results.budgets = budgetResult.length;
 
   // Claim unclaimed linked accounts
   const accountResult = await db
     .update(linkedAccounts)
     .set({ userId })
-    .where(eq(linkedAccounts.userId, ''));
-  results.linkedAccounts = accountResult.changes;
+    .where(eq(linkedAccounts.userId, ''))
+    .returning({ id: linkedAccounts.id });
+  results.linkedAccounts = accountResult.length;
 
   // Claim unclaimed recurring payments
   const recurringResult = await db
     .update(recurringPayments)
     .set({ userId })
-    .where(eq(recurringPayments.userId, ''));
-  results.recurringPayments = recurringResult.changes;
+    .where(eq(recurringPayments.userId, ''))
+    .returning({ id: recurringPayments.id });
+  results.recurringPayments = recurringResult.length;
 
   const totalClaimed = results.budgets + results.linkedAccounts + results.recurringPayments;
 

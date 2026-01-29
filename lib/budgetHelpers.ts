@@ -27,38 +27,39 @@ export function transformDbBudgetToAppBudget(dbBudget: any): Budget {
             // Calculate actual from direct transactions
             // Amounts are stored as positive in DB. The 'type' field indicates income vs expense.
             const directActual = activeTransactions.reduce((sum: number, t: any) => {
+              const amt = parseFloat(String(t.amount));
               // Income category: income adds, expense subtracts
               if (categoryType === 'income') {
                 if (t.type === 'income') {
-                  return sum + t.amount; // Add income to total earned
+                  return sum + amt; // Add income to total earned
                 } else {
-                  return sum - t.amount; // Subtract expense from total earned
+                  return sum - amt; // Subtract expense from total earned
                 }
               } else {
                 // Expense categories: expenses add to spent, income (refunds) reduces spent
                 if (t.type === 'expense') {
-                  return sum + t.amount; // Add expense to total spent
+                  return sum + amt; // Add expense to total spent
                 } else {
-                  return sum - t.amount; // Subtract income (refund) from total spent
+                  return sum - amt; // Subtract income (refund) from total spent
                 }
               }
             }, 0);
 
             // Add split transaction amounts allocated to this budget item
             // Split amounts are always positive (portions of the parent transaction)
-            const splitActual = (item.splitTransactions || []).reduce((sum: number, s: any) => sum + s.amount, 0);
+            const splitActual = (item.splitTransactions || []).reduce((sum: number, s: any) => sum + parseFloat(String(s.amount)), 0);
 
             return {
               id: item.id.toString(),
               name: item.name,
-              planned: item.planned,
+              planned: parseFloat(String(item.planned)),
               actual: directActual + splitActual,
               recurringPaymentId: item.recurringPaymentId || null,
               transactions: activeTransactions.map((t: any) => ({
                 id: t.id.toString(),
                 date: t.date,
                 description: t.description,
-                amount: t.amount,
+                amount: parseFloat(String(t.amount)),
                 budgetItemId: t.budgetItemId?.toString() || null,
                 linkedAccountId: t.linkedAccountId,
                 type: t.type,
@@ -68,7 +69,7 @@ export function transformDbBudgetToAppBudget(dbBudget: any): Budget {
               splitTransactions: (item.splitTransactions || []).map((s: any) => ({
                 id: s.id.toString(),
                 parentTransactionId: s.parentTransactionId.toString(),
-                amount: s.amount,
+                amount: parseFloat(String(s.amount)),
                 description: s.description,
                 parentDate: s.parentTransaction?.date,
                 parentMerchant: s.parentTransaction?.merchant,
@@ -86,7 +87,7 @@ export function transformDbBudgetToAppBudget(dbBudget: any): Budget {
     id: dbBudget.id,
     month: dbBudget.month,
     year: dbBudget.year,
-    buffer: dbBudget.buffer || 0,
+    buffer: parseFloat(String(dbBudget.buffer)) || 0,
     categories,
   };
 }

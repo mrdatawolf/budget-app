@@ -1,40 +1,40 @@
-import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
+import { pgTable, serial, text, integer, numeric, boolean, timestamp } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
-export const budgets = sqliteTable('budgets', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const budgets = pgTable('budgets', {
+  id: serial('id').primaryKey(),
   userId: text('user_id').notNull().default(''), // Clerk user ID
   month: integer('month').notNull(),
   year: integer('year').notNull(),
-  buffer: real('buffer').notNull().default(0),
-  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  buffer: numeric('buffer', { precision: 10, scale: 2 }).notNull().default('0'),
+  createdAt: timestamp('created_at', { withTimezone: true }).$defaultFn(() => new Date()),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).$defaultFn(() => new Date()),
 });
 
-export const budgetCategories = sqliteTable('budget_categories', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const budgetCategories = pgTable('budget_categories', {
+  id: serial('id').primaryKey(),
   budgetId: integer('budget_id').notNull().references(() => budgets.id, { onDelete: 'cascade' }),
   categoryType: text('category_type').notNull(), // 'income', 'giving', etc.
   name: text('name').notNull(),
 });
 
-export const budgetItems = sqliteTable('budget_items', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const budgetItems = pgTable('budget_items', {
+  id: serial('id').primaryKey(),
   categoryId: integer('category_id').notNull().references(() => budgetCategories.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
-  planned: real('planned').notNull().default(0),
+  planned: numeric('planned', { precision: 10, scale: 2 }).notNull().default('0'),
   order: integer('order').notNull().default(0),
   recurringPaymentId: integer('recurring_payment_id'), // Links to recurring_payments table
-  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  createdAt: timestamp('created_at', { withTimezone: true }).$defaultFn(() => new Date()),
 });
 
-export const transactions = sqliteTable('transactions', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const transactions = pgTable('transactions', {
+  id: serial('id').primaryKey(),
   budgetItemId: integer('budget_item_id').references(() => budgetItems.id, { onDelete: 'set null' }),
   linkedAccountId: integer('linked_account_id').references(() => linkedAccounts.id),
   date: text('date').notNull(),
   description: text('description').notNull(),
-  amount: real('amount').notNull(),
+  amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
   type: text('type').notNull().$type<'income' | 'expense'>(),
   merchant: text('merchant'),
   checkNumber: text('check_number'),
@@ -43,23 +43,23 @@ export const transactions = sqliteTable('transactions', {
   tellerAccountId: text('teller_account_id'),
   status: text('status').$type<'posted' | 'pending'>(),
   // Soft delete
-  deletedAt: integer('deleted_at', { mode: 'timestamp' }),
-  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).$defaultFn(() => new Date()),
 });
 
 // Split transactions - child allocations of a parent transaction
-export const splitTransactions = sqliteTable('split_transactions', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const splitTransactions = pgTable('split_transactions', {
+  id: serial('id').primaryKey(),
   parentTransactionId: integer('parent_transaction_id').notNull().references(() => transactions.id, { onDelete: 'cascade' }),
   budgetItemId: integer('budget_item_id').notNull().references(() => budgetItems.id, { onDelete: 'cascade' }),
-  amount: real('amount').notNull(),
+  amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
   description: text('description'), // Optional context like "household items"
-  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  createdAt: timestamp('created_at', { withTimezone: true }).$defaultFn(() => new Date()),
 });
 
 // Linked bank accounts from Teller
-export const linkedAccounts = sqliteTable('linked_accounts', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const linkedAccounts = pgTable('linked_accounts', {
+  id: serial('id').primaryKey(),
   userId: text('user_id').notNull().default(''), // Clerk user ID
   tellerAccountId: text('teller_account_id').notNull().unique(),
   tellerEnrollmentId: text('teller_enrollment_id').notNull(),
@@ -71,8 +71,8 @@ export const linkedAccounts = sqliteTable('linked_accounts', {
   accountSubtype: text('account_subtype').notNull(), // 'checking', 'savings', 'credit_card', etc.
   lastFour: text('last_four').notNull(),
   status: text('status').notNull().$type<'open' | 'closed'>(),
-  lastSyncedAt: integer('last_synced_at', { mode: 'timestamp' }),
-  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).$defaultFn(() => new Date()),
 });
 
 // Relations
@@ -125,28 +125,28 @@ export const linkedAccountsRelations = relations(linkedAccounts, ({ many }) => (
 }));
 
 // User onboarding tracking
-export const userOnboarding = sqliteTable('user_onboarding', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const userOnboarding = pgTable('user_onboarding', {
+  id: serial('id').primaryKey(),
   userId: text('user_id').notNull().unique(),
   currentStep: integer('current_step').notNull().default(1),
-  completedAt: integer('completed_at', { mode: 'timestamp' }),
-  skippedAt: integer('skipped_at', { mode: 'timestamp' }),
-  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  skippedAt: timestamp('skipped_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).$defaultFn(() => new Date()),
 });
 
 export const userOnboardingRelations = relations(userOnboarding, () => ({}));
 
 // Recurring payments for subscriptions and memberships
-export const recurringPayments = sqliteTable('recurring_payments', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const recurringPayments = pgTable('recurring_payments', {
+  id: serial('id').primaryKey(),
   userId: text('user_id').notNull().default(''), // Clerk user ID
   name: text('name').notNull(),
-  amount: real('amount').notNull(), // Total amount due when payment hits
+  amount: numeric('amount', { precision: 10, scale: 2 }).notNull(), // Total amount due when payment hits
   frequency: text('frequency').notNull().$type<'monthly' | 'quarterly' | 'semi-annually' | 'annually'>(),
   nextDueDate: text('next_due_date').notNull(), // ISO date string
-  fundedAmount: real('funded_amount').notNull().default(0), // Amount saved toward this payment
+  fundedAmount: numeric('funded_amount', { precision: 10, scale: 2 }).notNull().default('0'),
   categoryType: text('category_type').$type<'income' | 'giving' | 'household' | 'transportation' | 'food' | 'personal' | 'insurance' | 'saving'>(),
-  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
-  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).$defaultFn(() => new Date()),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).$defaultFn(() => new Date()),
 });

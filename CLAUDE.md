@@ -6,7 +6,7 @@ This document contains context for Claude AI to continue development on this bud
 
 A zero-based budget tracking application built with Next.js, TypeScript, and Tailwind CSS. The app features bank account integration via Teller API for automatic transaction imports.
 
-**Current Version:** v1.3.1
+**Current Version:** v1.4.0
 **Last Session:** 2026-01-29
 
 ## Tech Stack
@@ -15,9 +15,10 @@ A zero-based budget tracking application built with Next.js, TypeScript, and Tai
 - **Language:** TypeScript
 - **Styling:** Tailwind CSS
 - **ORM:** Drizzle ORM
-- **Database:** SQLite (better-sqlite3)
+- **Database:** Supabase (PostgreSQL) — migrated from SQLite in v1.4.0
 - **Authentication:** Clerk (@clerk/nextjs)
 - **Bank Integration:** Teller API
+- **Mobile:** Capacitor (live server mode)
 - **Icons:** react-icons (FaXxx from react-icons/fa only)
 
 ## Key Concepts
@@ -299,9 +300,12 @@ const emojiMap: Record<string, string> = {
 
 ```bash
 npm run dev          # Start development server
-npm run db:push      # Push schema changes to database
+npm run db:push      # Push schema changes to Supabase PostgreSQL
 npm run db:studio    # Open Drizzle Studio to view/edit data
 npm run build        # Production build
+npm run cap:sync     # Sync Capacitor
+npm run cap:ios      # Build + open Xcode
+npm run cap:android  # Build + open Android Studio
 ```
 
 ## Testing Notes
@@ -419,13 +423,91 @@ When testing recurring payments:
 - Migration script: `scripts/migrate-add-onboarding.ts` for existing users
 - Standalone onboarding layout (no DashboardLayout) with `h-screen overflow-hidden` and scrollable content area
 
+## Recent Changes (v1.4.0)
+
+### Supabase Migration (Phases 1-4)
+- **Database:** Migrated from SQLite (`better-sqlite3`) to Supabase PostgreSQL
+- **Schema:** Converted all tables from `sqliteTable` to `pgTable` in `db/schema.ts`
+  - `integer().primaryKey({ autoIncrement: true })` → `serial().primaryKey()`
+  - `integer({ mode: 'timestamp' })` → `timestamp({ withTimezone: true })`
+  - `integer({ mode: 'boolean' })` → `boolean()`
+  - `real()` → `numeric({ precision: 10, scale: 2 })`
+- **Driver:** Switched from `drizzle-orm/better-sqlite3` to `drizzle-orm/postgres-js` in `db/index.ts`
+- **Dependencies:** Removed `better-sqlite3` / `@types/better-sqlite3`, added `postgres`
+- **Data migration script:** `scripts/migrate-data.ts` — migrates all 7 tables in FK order with sequence resets
+- **Drizzle config:** `drizzle.config.ts` updated to `dialect: 'postgresql'` with `DATABASE_URL`
+
+### PostgreSQL Numeric Type Fixes
+PostgreSQL `numeric` columns return strings, not numbers. All arithmetic operations across 10+ files updated:
+- **Read pattern:** `parseFloat(String(value))` for arithmetic
+- **Write pattern:** `String(value)` for DB inserts (e.g., `fundedAmount: '0'`, `amount: String(parseFloat(amount))`)
+- **Affected files:** `budgetHelpers.ts`, `recurring-payments/route.ts`, `recurring-payments/contribute/route.ts`, `recurring-payments/reset/route.ts`, `transactions/split/route.ts`, `budget-items/route.ts`, `budgets/route.ts`, `budgets/copy/route.ts`, `auth/claim-data/route.ts`, `SplitTransactionModal.tsx`
+- **`.returning()` migration:** Replaced SQLite `.changes` with PostgreSQL `.returning({ id: X.id }).length` in `auth/claim-data/route.ts`
+
+### Phase 5 Skipped — Edge Functions NOT Migrated
+**Decision:** Phase 5 (migrating API routes to Supabase Edge Functions) was intentionally skipped. The app continues to use Next.js API routes (`app/api/`) which connect directly to Supabase PostgreSQL via Drizzle ORM.
+
+**Rationale:**
+- Next.js API routes already work with PostgreSQL — no functional reason to migrate
+- Edge Functions use Deno runtime, requiring significant code rewriting
+- Teller API integration (certificates, mTLS) would need special handling in Deno
+- Current architecture (Next.js API routes → PostgreSQL) works for both web and Capacitor mobile
+- Skipping avoids introducing complexity with no user-facing benefit
+
+**Architecture:** Web + Capacitor Mobile → Next.js API Routes (Vercel) → Supabase PostgreSQL
+
+**If Edge Functions are ever needed:**
+- See `MOBILE_MIGRATION_PLAN.md` Phase 5 for the full plan
+- 11 route files, 26 handlers would need conversion
+- Would require Supabase CLI, Deno-compatible Drizzle setup, and secrets management for Teller certs
+
+### Capacitor Setup (Phase 6)
+- **Mode:** Live server (wraps deployed Next.js URL, no static export)
+- **Config:** `capacitor.config.ts` with `server.url` pointing to deployed app
+- **Dependencies:** `@capacitor/core`, `@capacitor/cli`
+- **Scripts:** `cap:sync`, `cap:ios`, `cap:android` added to `package.json`
+- **Phase 7 deferred:** iOS/Android platform setup not yet done (`@capacitor/ios`, `@capacitor/android` not installed)
+
+### Teller Sync Optimization
+- **Problem:** Sync took ~60s for 5 transactions due to N+1 queries over network to Supabase
+- **Fix:** Refactored `POST` handler in `teller/sync/route.ts` to use batch queries:
+  - Single `inArray` SELECT to fetch all existing transactions by Teller IDs
+  - Single batch `INSERT` for new transactions
+  - Individual `UPDATE`s only for changed rows (different data per row)
+- **Result:** Reduced from ~500 individual DB queries to ~3-5 batch queries
+
+### Monthly Report Fix
+- **Bug:** Saving category was being counted as an expense in Monthly Report totals
+- **Fix:** Added `key !== 'saving'` filter in `MonthlyReportModal.tsx` for both current and previous month calculations
+
+### Split Transaction Fix
+- **Bug:** `e.amount.toFixed is not a function` when clicking split transactions to edit
+- **Cause:** PostgreSQL `numeric` returns strings, not numbers
+- **Fix:** Wrapped with `parseFloat(String(s.amount)).toFixed(2)` in `SplitTransactionModal.tsx`
+
+### Previous Month Transactions
+- **Feature:** Sidebar "New" (uncategorized) transactions tab now shows last 3 days of previous month
+- **Backend:** `GET /api/teller/sync` extended to include previous month's last 3 days, adds `fromPreviousMonth` flag per transaction
+- **Frontend:** `BudgetSummary.tsx` groups transactions with "Previous Month (Last 3 Days)" and "This Month" headings
+- **Behavior:** Once assigned to a budget item, transactions count toward the budget item's actuals regardless of date
+
+### Environment Variables (Supabase)
+```env
+DATABASE_URL=postgresql://postgres.xxx:password@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+# Supabase client not used directly (queries go through Drizzle ORM)
+```
+
 ## Session Handoff Notes
 
 Last session ended after:
-1. Built full 6-step interactive onboarding flow
-2. Added suggested items and transactions as clickable badges
-3. Added empty-state handling to Monthly Report
-4. Updated all documentation (.md files)
-5. Added .env.example and updated README
+1. Completed Supabase migration (Phases 1-4)
+2. Skipped Phase 5 (Edge Functions) — documented rationale above
+3. Set up Capacitor live server mode (Phase 6)
+4. Fixed all PostgreSQL numeric type issues across 10+ files
+5. Optimized Teller sync from ~60s to fast batch queries
+6. Fixed Monthly Report excluding Saving from expenses
+7. Fixed split transaction `.toFixed()` error
+8. Added previous month transactions feature (last 3 days)
+9. Build verified passing
 
-The app is in a stable state with v1.3.0 changes applied. All changes are uncommitted.
+The app is in a stable state with v1.4.0 changes applied.

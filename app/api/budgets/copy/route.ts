@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
       userId,
       month: targetMonth,
       year: targetYear,
-      buffer: sourceBudget?.buffer || 0,
+      buffer: sourceBudget?.buffer || '0',
     }).returning();
 
     for (const cat of CATEGORY_TYPES) {

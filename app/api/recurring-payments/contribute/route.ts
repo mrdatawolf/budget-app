@@ -28,12 +28,12 @@ export async function POST(request: NextRequest) {
   }
 
   // Add contribution to funded amount
-  const newFundedAmount = Math.max(0, payment.fundedAmount + parseFloat(amount));
+  const newFundedAmount = Math.max(0, parseFloat(String(payment.fundedAmount)) + parseFloat(amount));
 
   const [updated] = await db
     .update(recurringPayments)
     .set({
-      fundedAmount: newFundedAmount,
+      fundedAmount: String(newFundedAmount),
       updatedAt: new Date(),
     })
     .where(eq(recurringPayments.id, parseInt(id)))

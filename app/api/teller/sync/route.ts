@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { linkedAccounts, transactions, splitTransactions } from '@/db/schema';
-import { eq, and, isNull, notInArray } from 'drizzle-orm';
+import { eq, and, isNull, notInArray, inArray } from 'drizzle-orm';
 import { createTellerClient, TellerTransaction } from '@/lib/teller';
 import { requireAuth, isAuthError } from '@/lib/auth';
 
@@ -53,59 +53,70 @@ export async function POST(request: NextRequest) {
           }
         );
 
+        // Fetch all existing transactions for this account's Teller IDs in one query
+        const tellerIds = tellerTransactions.map(t => t.id);
+        const existingTxns = tellerIds.length > 0
+          ? await db
+              .select()
+              .from(transactions)
+              .where(inArray(transactions.tellerTransactionId, tellerIds))
+          : [];
+        const existingMap = new Map(existingTxns.map(t => [t.tellerTransactionId, t]));
+
+        // Separate into new vs existing
+        const toInsert: typeof transactions.$inferInsert[] = [];
+        const toUpdate: { id: number; data: Partial<typeof transactions.$inferInsert> }[] = [];
+
         for (const txn of tellerTransactions) {
-          // Parse amount - Teller returns negative for debits, positive for credits
-          const amount = Math.abs(parseFloat(txn.amount));
+          const amountNum = Math.abs(parseFloat(txn.amount));
+          const amount = String(amountNum);
           const type: 'income' | 'expense' = parseFloat(txn.amount) > 0 ? 'income' : 'expense';
 
-          // Check if transaction already exists
-          const existing = await db
-            .select()
-            .from(transactions)
-            .where(eq(transactions.tellerTransactionId, txn.id))
-            .limit(1);
+          const existingTxn = existingMap.get(txn.id);
 
-          if (existing.length > 0) {
-            const existingTxn = existing[0];
-
-            // Check if we need to update (status changed or amount changed)
+          if (existingTxn) {
             const statusChanged = existingTxn.status !== txn.status;
-            const amountChanged = Math.abs(existingTxn.amount - amount) > 0.001;
+            const amountChanged = Math.abs(parseFloat(String(existingTxn.amount)) - amountNum) > 0.001;
 
             if (statusChanged || amountChanged) {
-              await db
-                .update(transactions)
-                .set({
+              toUpdate.push({
+                id: existingTxn.id,
+                data: {
                   status: txn.status,
-                  amount: amount,
-                  // Update description/merchant in case they changed too
+                  amount,
                   description: txn.description,
                   merchant: txn.details?.counterparty?.name || existingTxn.merchant,
-                })
-                .where(eq(transactions.id, existingTxn.id));
-
+                },
+              });
               results.updated++;
             } else {
               results.skipped++;
             }
-            continue;
+          } else {
+            toInsert.push({
+              budgetItemId: null,
+              linkedAccountId: account.id,
+              date: txn.date,
+              description: txn.description,
+              amount,
+              type,
+              merchant: txn.details?.counterparty?.name || null,
+              tellerTransactionId: txn.id,
+              tellerAccountId: account.tellerAccountId,
+              status: txn.status,
+            });
+            results.synced++;
           }
+        }
 
-          // Insert new transaction (uncategorized - no budgetItemId)
-          await db.insert(transactions).values({
-            budgetItemId: null, // Uncategorized
-            linkedAccountId: account.id, // Link to the account
-            date: txn.date,
-            description: txn.description,
-            amount,
-            type,
-            merchant: txn.details?.counterparty?.name || null,
-            tellerTransactionId: txn.id,
-            tellerAccountId: account.tellerAccountId,
-            status: txn.status,
-          });
+        // Batch insert new transactions
+        if (toInsert.length > 0) {
+          await db.insert(transactions).values(toInsert);
+        }
 
-          results.synced++;
+        // Updates still need individual queries (different data per row)
+        for (const { id, data } of toUpdate) {
+          await db.update(transactions).set(data).where(eq(transactions.id, id));
         }
 
         // Update last synced timestamp
@@ -178,20 +189,41 @@ export async function GET(request: NextRequest) {
       txn => txn.linkedAccount && userAccountIds.includes(txn.linkedAccount.id)
     );
 
-    // Filter by month/year if provided
+    // Filter by month/year if provided, also include last 3 days of previous month
     let filtered = userTransactions;
+    let prevMonthCutoff: string | null = null;
     if (month !== null && year !== null) {
       const monthNum = parseInt(month);
       const yearNum = parseInt(year);
+
+      // Calculate the last 3 days of the previous month
+      const prevMonth = monthNum === 0 ? 11 : monthNum - 1;
+      const prevYear = monthNum === 0 ? yearNum - 1 : yearNum;
+      // Get the last day of the previous month
+      const lastDayPrev = new Date(prevYear, prevMonth + 1, 0).getDate();
+      const cutoffDay = lastDayPrev - 2; // 3 days: lastDay, lastDay-1, lastDay-2
+      prevMonthCutoff = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-${String(cutoffDay).padStart(2, '0')}`;
+
       filtered = userTransactions.filter(txn => {
-        // Parse date as local time to avoid timezone shift (YYYY-MM-DD format)
         const [txnYear, txnMonth] = txn.date.split('-').map(Number);
-        return (txnMonth - 1) === monthNum && txnYear === yearNum;
+        // Current month match
+        if ((txnMonth - 1) === monthNum && txnYear === yearNum) return true;
+        // Previous month's last 3 days
+        if ((txnMonth - 1) === prevMonth && txnYear === prevYear && txn.date >= prevMonthCutoff!) return true;
+        return false;
       });
     }
 
     // Map to simpler format
-    const result = filtered.map(txn => ({
+    const result = filtered.map(txn => {
+      let fromPreviousMonth = false;
+      if (month !== null && year !== null) {
+        const [txnYear, txnMonth] = txn.date.split('-').map(Number);
+        const monthNum = parseInt(month);
+        const yearNum = parseInt(year);
+        fromPreviousMonth = !((txnMonth - 1) === monthNum && txnYear === yearNum);
+      }
+      return {
       id: txn.id,
       budgetItemId: txn.budgetItemId,
       linkedAccountId: txn.linkedAccountId,
@@ -205,7 +237,9 @@ export async function GET(request: NextRequest) {
       status: txn.status,
       deletedAt: txn.deletedAt,
       createdAt: txn.createdAt,
-    }));
+      fromPreviousMonth,
+    };
+    });
 
     return NextResponse.json(result);
   } catch (error) {
