@@ -2,10 +2,20 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Budget, Transaction, BudgetItem } from "@/types/budget";
-import { FaChartPie, FaReceipt, FaSync, FaCheck, FaTimes, FaUndo, FaPlus } from "react-icons/fa";
+import {
+  FaChartPie,
+  FaReceipt,
+  FaSync,
+  FaCheck,
+  FaTimes,
+  FaUndo,
+  FaPlus,
+} from "react-icons/fa";
 import { HiOutlineScissors } from "react-icons/hi2";
 import AddTransactionModal, { TransactionToEdit } from "./AddTransactionModal";
 import SplitTransactionModal, { ExistingSplit } from "./SplitTransactionModal";
+import { useToast } from "@/contexts/ToastContext";
+import { useUncategorizedCount } from "@/contexts/UncategorizedCountContext";
 
 interface SelectedBudgetItem {
   item: BudgetItem;
@@ -27,7 +37,7 @@ interface UncategorizedTransaction {
   date: string;
   description: string;
   amount: number;
-  type: 'income' | 'expense';
+  type: "income" | "expense";
   merchant: string | null;
   status: string | null;
 }
@@ -40,29 +50,47 @@ interface LinkedAccount {
   accountSubtype: string;
 }
 
-export default function BudgetSummary({ budget, onRefresh, onTransactionClick, selectedBudgetItem, onCloseItemDetail, splitToEdit, onClearSplitToEdit }: BudgetSummaryProps) {
+export default function BudgetSummary({
+  budget,
+  onRefresh,
+  onTransactionClick,
+  selectedBudgetItem,
+  onCloseItemDetail,
+  splitToEdit,
+  onClearSplitToEdit,
+}: BudgetSummaryProps) {
+  const toast = useToast();
+  const { setCount: setUncategorizedCount } = useUncategorizedCount();
   const [activeTab, setActiveTab] = useState<"summary" | "transactions">(
-    "summary"
+    "summary",
   );
-  const [transactionSubTab, setTransactionSubTab] = useState<"new" | "tracked" | "deleted">("new");
-  const [uncategorizedTxns, setUncategorizedTxns] = useState<UncategorizedTransaction[]>([]);
-  const [deletedTxns, setDeletedTxns] = useState<UncategorizedTransaction[]>([]);
+  const [transactionSubTab, setTransactionSubTab] = useState<
+    "new" | "tracked" | "deleted"
+  >("new");
+  const [uncategorizedTxns, setUncategorizedTxns] = useState<
+    UncategorizedTransaction[]
+  >([]);
+  const [deletedTxns, setDeletedTxns] = useState<UncategorizedTransaction[]>(
+    [],
+  );
   const [isLoadingUncategorized, setIsLoadingUncategorized] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [assigningId, setAssigningId] = useState<number | null>(null);
-  const [selectedBudgetItemId, setSelectedBudgetItemId] = useState<string>('');
+  const [selectedBudgetItemId, setSelectedBudgetItemId] = useState<string>("");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>([]);
-  const [transactionToEdit, setTransactionToEdit] = useState<TransactionToEdit | null>(null);
+  const [transactionToEdit, setTransactionToEdit] =
+    useState<TransactionToEdit | null>(null);
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
-  const [transactionToSplit, setTransactionToSplit] = useState<UncategorizedTransaction | null>(null);
+  const [transactionToSplit, setTransactionToSplit] =
+    useState<UncategorizedTransaction | null>(null);
   const [existingSplits, setExistingSplits] = useState<ExistingSplit[]>([]);
 
   const buffer = budget.buffer || 0;
 
   const totalIncome = budget.categories.income.items.reduce(
     (sum, item) => sum + item.planned,
-    0
+    0,
   );
 
   const totalExpenses = Object.entries(budget.categories)
@@ -78,7 +106,7 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
 
   const totalActualIncome = budget.categories.income.items.reduce(
     (sum, item) => sum + item.actual,
-    0
+    0,
   );
 
   const totalActualExpenses = Object.entries(budget.categories)
@@ -119,12 +147,24 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
         setIsSplitModalOpen(true);
       }
     } catch (error) {
-      console.error('Error fetching split transaction data:', error);
+      console.error("Error fetching split transaction data:", error);
     }
   };
 
   // Collect all transactions from all categories (including splits)
-  const allTransactions: (Transaction | { isSplit: true; id: string; date: string; description: string; amount: number; type: 'income' | 'expense'; merchant?: string | null; parentTransactionId: string })[] = [];
+  const allTransactions: (
+    | Transaction
+    | {
+        isSplit: true;
+        id: string;
+        date: string;
+        description: string;
+        amount: number;
+        type: "income" | "expense";
+        merchant?: string | null;
+        parentTransactionId: string;
+      }
+  )[] = [];
   Object.entries(budget.categories).forEach(([, category]) => {
     category.items.forEach((item) => {
       item.transactions.forEach((transaction) => {
@@ -135,10 +175,11 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
         allTransactions.push({
           isSplit: true,
           id: `split-${split.id}`,
-          date: split.parentDate || '',
-          description: split.description || split.parentDescription || 'Split transaction',
+          date: split.parentDate || "",
+          description:
+            split.description || split.parentDescription || "Split transaction",
           amount: split.amount,
-          type: split.parentType || 'expense',
+          type: split.parentType || "expense",
           merchant: split.parentMerchant,
           parentTransactionId: split.parentTransactionId,
         });
@@ -148,12 +189,12 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
 
   // Sort transactions by date (most recent first)
   allTransactions.sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
   );
 
   const formatDate = (dateString: string) => {
     // Parse as local date to avoid timezone shift (YYYY-MM-DD format)
-    const [year, month, day] = dateString.split('-').map(Number);
+    const [year, month, day] = dateString.split("-").map(Number);
     const date = new Date(year, month - 1, day);
     return date.toLocaleDateString("en-US", { month: "short", day: "2-digit" });
   };
@@ -162,41 +203,46 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
   const fetchUncategorized = useCallback(async () => {
     setIsLoadingUncategorized(true);
     try {
-      const response = await fetch(`/api/teller/sync?month=${budget.month}&year=${budget.year}`);
+      const response = await fetch(
+        `/api/teller/sync?month=${budget.month}&year=${budget.year}`,
+      );
       if (response.ok) {
         const data = await response.json();
         setUncategorizedTxns(data);
+        setUncategorizedCount(data.length);
       }
     } catch (error) {
-      console.error('Error fetching uncategorized transactions:', error);
+      console.error("Error fetching uncategorized transactions:", error);
     } finally {
       setIsLoadingUncategorized(false);
     }
-  }, [budget.month, budget.year]);
+  }, [budget.month, budget.year, setUncategorizedCount]);
 
   // Fetch deleted transactions
   const fetchDeleted = useCallback(async () => {
     try {
-      const response = await fetch(`/api/transactions?deleted=true&month=${budget.month}&year=${budget.year}`);
+      const response = await fetch(
+        `/api/transactions?deleted=true&month=${budget.month}&year=${budget.year}`,
+      );
       if (response.ok) {
         const data = await response.json();
         setDeletedTxns(data);
       }
     } catch (error) {
-      console.error('Error fetching deleted transactions:', error);
+      console.error("Error fetching deleted transactions:", error);
     }
   }, [budget.month, budget.year]);
 
   // Fetch linked accounts
   const fetchLinkedAccounts = useCallback(async () => {
     try {
-      const response = await fetch('/api/teller/accounts');
+      const response = await fetch("/api/teller/accounts");
       if (response.ok) {
         const data = await response.json();
         setLinkedAccounts(data);
       }
     } catch (error) {
-      console.error('Error fetching linked accounts:', error);
+      console.error("Error fetching linked accounts:", error);
     }
   }, []);
 
@@ -217,9 +263,9 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
   const handleSync = async () => {
     setIsSyncing(true);
     try {
-      const response = await fetch('/api/teller/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/teller/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
       if (response.ok) {
@@ -228,15 +274,15 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
         if (result.synced > 0) messages.push(`${result.synced} new`);
         if (result.updated > 0) messages.push(`${result.updated} updated`);
         if (messages.length > 0) {
-          alert(`Synced: ${messages.join(', ')}`);
+          toast.success(`Synced: ${messages.join(", ")}`);
         } else {
-          alert('No new transactions to sync');
+          toast.info("No new transactions to sync");
         }
         await fetchUncategorized();
         onRefresh?.();
       }
     } catch (error) {
-      console.error('Error syncing:', error);
+      console.error("Error syncing:", error);
     } finally {
       setIsSyncing(false);
     }
@@ -246,9 +292,9 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
     if (!selectedBudgetItemId) return;
 
     try {
-      const response = await fetch('/api/transactions', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/transactions", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: transactionId,
           budgetItemId: selectedBudgetItemId,
@@ -256,78 +302,87 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
       });
 
       if (response.ok) {
-        setUncategorizedTxns(uncategorizedTxns.filter(t => t.id !== transactionId));
+        setUncategorizedTxns(
+          uncategorizedTxns.filter((t) => t.id !== transactionId),
+        );
         setAssigningId(null);
-        setSelectedBudgetItemId('');
+        setSelectedBudgetItemId("");
         onRefresh?.();
       }
     } catch (error) {
-      console.error('Error assigning transaction:', error);
+      console.error("Error assigning transaction:", error);
     }
   };
 
   const handleDeleteUncategorized = async (transactionId: number) => {
-    if (!confirm('Delete this transaction?')) return;
+    if (!confirm("Delete this transaction?")) return;
 
     try {
       const response = await fetch(`/api/transactions?id=${transactionId}`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
 
       if (response.ok) {
         // Move to deleted list
-        const deletedTxn = uncategorizedTxns.find(t => t.id === transactionId);
+        const deletedTxn = uncategorizedTxns.find(
+          (t) => t.id === transactionId,
+        );
         if (deletedTxn) {
           setDeletedTxns([...deletedTxns, deletedTxn]);
         }
-        setUncategorizedTxns(uncategorizedTxns.filter(t => t.id !== transactionId));
+        setUncategorizedTxns(
+          uncategorizedTxns.filter((t) => t.id !== transactionId),
+        );
       }
     } catch (error) {
-      console.error('Error deleting transaction:', error);
+      console.error("Error deleting transaction:", error);
     }
   };
 
   const handleRestoreTransaction = async (transactionId: number) => {
     try {
-      const response = await fetch('/api/transactions', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/transactions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: transactionId }),
       });
 
       if (response.ok) {
         // Move from deleted to uncategorized
-        const restoredTxn = deletedTxns.find(t => t.id === transactionId);
+        const restoredTxn = deletedTxns.find((t) => t.id === transactionId);
         if (restoredTxn) {
           setUncategorizedTxns([...uncategorizedTxns, restoredTxn]);
         }
-        setDeletedTxns(deletedTxns.filter(t => t.id !== transactionId));
+        setDeletedTxns(deletedTxns.filter((t) => t.id !== transactionId));
         onRefresh?.();
       }
     } catch (error) {
-      console.error('Error restoring transaction:', error);
+      console.error("Error restoring transaction:", error);
     }
   };
 
   const handlePermanentDelete = async (transactionId: number) => {
-    if (!confirm('Permanently delete this transaction? This cannot be undone.')) return;
+    if (!confirm("Permanently delete this transaction? This cannot be undone."))
+      return;
 
     try {
       // For permanent delete, we'd need a separate endpoint, but for now just remove from UI
       // The transaction stays in DB with deletedAt set
-      setDeletedTxns(deletedTxns.filter(t => t.id !== transactionId));
+      setDeletedTxns(deletedTxns.filter((t) => t.id !== transactionId));
     } catch (error) {
-      console.error('Error permanently deleting transaction:', error);
+      console.error("Error permanently deleting transaction:", error);
     }
   };
 
   // Get all budget items for the dropdown
   const getAllBudgetItems = (): { category: string; items: BudgetItem[] }[] => {
-    const categories = Object.entries(budget.categories).map(([, category]) => ({
-      category: category.name,
-      items: category.items,
-    }));
-    return categories.filter(c => c.items.length > 0);
+    const categories = Object.entries(budget.categories).map(
+      ([, category]) => ({
+        category: category.name,
+        items: category.items,
+      }),
+    );
+    return categories.filter((c) => c.items.length > 0);
   };
 
   const handleAddTransaction = async (transaction: {
@@ -336,13 +391,13 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
     date: string;
     description: string;
     amount: number;
-    type: 'income' | 'expense';
+    type: "income" | "expense";
     merchant?: string;
   }) => {
     try {
-      const response = await fetch('/api/transactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(transaction),
       });
 
@@ -350,7 +405,7 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
         onRefresh?.();
       }
     } catch (error) {
-      console.error('Error adding transaction:', error);
+      console.error("Error adding transaction:", error);
     }
   };
 
@@ -361,13 +416,13 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
     date: string;
     description: string;
     amount: number;
-    type: 'income' | 'expense';
+    type: "income" | "expense";
     merchant?: string;
   }) => {
     try {
-      const response = await fetch('/api/transactions', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/transactions", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(transaction),
       });
 
@@ -376,14 +431,14 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
         onRefresh?.();
       }
     } catch (error) {
-      console.error('Error editing transaction:', error);
+      console.error("Error editing transaction:", error);
     }
   };
 
   const handleDeleteFromModal = async (id: number) => {
     try {
       const response = await fetch(`/api/transactions?id=${id}`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
 
       if (response.ok) {
@@ -392,7 +447,7 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
         onRefresh?.();
       }
     } catch (error) {
-      console.error('Error deleting transaction:', error);
+      console.error("Error deleting transaction:", error);
     }
   };
 
@@ -403,7 +458,9 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
     } else {
       setTransactionToEdit({
         id: parseInt(transaction.id),
-        budgetItemId: transaction.budgetItemId ? parseInt(transaction.budgetItemId) : null,
+        budgetItemId: transaction.budgetItemId
+          ? parseInt(transaction.budgetItemId)
+          : null,
         linkedAccountId: transaction.linkedAccountId,
         date: transaction.date,
         description: transaction.description,
@@ -432,13 +489,15 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
     setExistingSplits([]);
   };
 
-  const handleSplitTransaction = async (splits: { budgetItemId: number; amount: number; description?: string }[]) => {
+  const handleSplitTransaction = async (
+    splits: { budgetItemId: number; amount: number; description?: string }[],
+  ) => {
     if (!transactionToSplit) return;
 
     try {
-      const response = await fetch('/api/transactions/split', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/transactions/split", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           transactionId: transactionToSplit.id,
           splits,
@@ -447,16 +506,18 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
 
       if (response.ok) {
         // Remove from uncategorized list since it's now split
-        setUncategorizedTxns(uncategorizedTxns.filter(t => t.id !== transactionToSplit.id));
+        setUncategorizedTxns(
+          uncategorizedTxns.filter((t) => t.id !== transactionToSplit.id),
+        );
         closeSplitModal();
         onRefresh?.();
       } else {
         const error = await response.json();
-        alert(error.error || 'Failed to split transaction');
+        toast.error(error.error || "Failed to split transaction");
       }
     } catch (error) {
-      console.error('Error splitting transaction:', error);
-      alert('Failed to split transaction');
+      console.error("Error splitting transaction:", error);
+      toast.error("Failed to split transaction");
     }
   };
 
@@ -464,12 +525,13 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
   if (selectedBudgetItem) {
     const { item, categoryName } = selectedBudgetItem;
     const remaining = item.planned - item.actual;
-    const progressPercent = item.planned > 0 ? Math.min((item.actual / item.planned) * 100, 100) : 0;
+    const progressPercent =
+      item.planned > 0 ? Math.min((item.actual / item.planned) * 100, 100) : 0;
     const isOverBudget = item.actual > item.planned;
 
     // Combine and sort all transactions for this item
     const itemTransactions = [
-      ...item.transactions.map(t => ({
+      ...item.transactions.map((t) => ({
         id: t.id,
         date: t.date,
         description: t.merchant || t.description,
@@ -479,12 +541,13 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
         originalTransaction: t, // Keep full transaction for editing
         parentTransactionId: null as string | null,
       })),
-      ...(item.splitTransactions || []).map(s => ({
+      ...(item.splitTransactions || []).map((s) => ({
         id: `split-${s.id}`,
-        date: s.parentDate || '',
-        description: s.description || s.parentMerchant || s.parentDescription || 'Split',
+        date: s.parentDate || "",
+        description:
+          s.description || s.parentMerchant || s.parentDescription || "Split",
         amount: s.amount,
-        type: s.parentType || 'expense' as const,
+        type: s.parentType || ("expense" as const),
         isSplit: true,
         originalTransaction: null,
         parentTransactionId: s.parentTransactionId,
@@ -492,13 +555,13 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     return (
-      <div className="bg-white rounded-xl shadow-lg h-full flex flex-col">
+      <div className="bg-surface rounded-xl shadow-lg h-full flex flex-col">
         {/* Header */}
-        <div className="p-6 border-b border-gray-200">
+        <div className="p-6 border-b border-border">
           <div className="flex items-center justify-between mb-4">
             <button
               onClick={onCloseItemDetail}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
+              className="text-text-tertiary hover:text-text-secondary transition-colors"
             >
               ✕
             </button>
@@ -529,35 +592,41 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
                 />
               </svg>
               <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-lg font-bold text-gray-700">
+                <span className="text-lg font-bold text-text-secondary">
                   {progressPercent.toFixed(0)}%
                 </span>
               </div>
             </div>
             <div className="text-right flex-1">
-              <p className="text-sm text-gray-500">Remaining</p>
-              <p className={`text-3xl font-bold ${remaining < 0 ? 'text-red-600' : 'text-gray-900'}`}>
-                {remaining < 0 ? '-' : ''}${Math.abs(remaining).toFixed(2)}
+              <p className="text-sm text-text-secondary">Remaining</p>
+              <p
+                className={`text-3xl font-bold ${remaining < 0 ? "text-danger" : "text-text-primary"}`}
+              >
+                {remaining < 0 ? "-" : ""}${Math.abs(remaining).toFixed(2)}
               </p>
             </div>
           </div>
 
           {/* Item Name */}
-          <h2 className="text-2xl font-bold text-gray-900 mb-1">{item.name}</h2>
-          <p className="text-sm text-gray-500 mb-4">{categoryName}</p>
+          <h2 className="text-2xl font-bold text-text-primary mb-1">
+            {item.name}
+          </h2>
+          <p className="text-sm text-text-secondary mb-4">{categoryName}</p>
 
           {/* Spent of Planned */}
           <p className="text-base">
-            <span className={isOverBudget ? 'text-red-600' : 'text-green-600'}>
+            <span className={isOverBudget ? "text-danger" : "text-success"}>
               ${item.actual.toFixed(2)}
             </span>
-            <span className="text-gray-500"> spent of </span>
-            <span className="text-gray-900">${item.planned.toFixed(2)}</span>
+            <span className="text-text-secondary"> spent of </span>
+            <span className="text-text-primary">
+              ${item.planned.toFixed(2)}
+            </span>
           </p>
 
           {/* Recurring indicator or option */}
           {item.recurringPaymentId ? (
-            <div className="mt-4 flex items-center gap-2 text-sm text-blue-600">
+            <div className="mt-4 flex items-center gap-2 text-sm text-primary">
               <span>🔄</span>
               <span>Recurring payment</span>
             </div>
@@ -573,7 +642,7 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
                 });
                 window.location.href = `/recurring?${params.toString()}`;
               }}
-              className="mt-4 flex items-center gap-2 text-sm text-gray-500 hover:text-blue-600 transition-colors"
+              className="mt-4 flex items-center gap-2 text-sm text-text-secondary hover:text-primary transition-colors"
             >
               <span>🔄</span>
               <span>Make this recurring</span>
@@ -583,12 +652,14 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
 
         {/* Activity This Month */}
         <div className="flex-1 overflow-y-auto p-6">
-          <h3 className="text-base font-semibold text-gray-700 mb-4">
+          <h3 className="text-base font-semibold text-text-secondary mb-4">
             Activity This Month
           </h3>
 
           {itemTransactions.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">No transactions yet</p>
+            <p className="text-text-secondary text-center py-8">
+              No transactions yet
+            </p>
           ) : (
             <div className="space-y-3">
               {itemTransactions.map((txn) => (
@@ -597,26 +668,42 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
                   onClick={() => {
                     if (txn.isSplit && txn.parentTransactionId) {
                       fetchAndOpenSplitModal(txn.parentTransactionId);
-                    } else if (!txn.isSplit && txn.originalTransaction && onTransactionClick) {
+                    } else if (
+                      !txn.isSplit &&
+                      txn.originalTransaction &&
+                      onTransactionClick
+                    ) {
                       onTransactionClick(txn.originalTransaction);
                     }
                   }}
-                  className="flex items-center justify-between py-2 rounded px-2 -mx-2 transition-colors cursor-pointer hover:bg-gray-50"
+                  className="flex items-center justify-between py-2 rounded px-2 -mx-2 transition-colors cursor-pointer hover:bg-surface-secondary"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gray-100 rounded-full flex flex-col items-center justify-center text-xs text-gray-500">
-                      <span>{new Date(txn.date).toLocaleDateString('en-US', { month: 'short' })}</span>
-                      <span className="font-semibold">{new Date(txn.date).getDate()}</span>
+                    <div className="w-10 h-10 bg-surface-secondary rounded-full flex flex-col items-center justify-center text-xs text-text-secondary">
+                      <span>
+                        {new Date(txn.date).toLocaleDateString("en-US", {
+                          month: "short",
+                        })}
+                      </span>
+                      <span className="font-semibold">
+                        {new Date(txn.date).getDate()}
+                      </span>
                     </div>
                     <div>
-                      <p className="text-gray-900 text-sm">{txn.description}</p>
+                      <p className="text-text-primary text-sm">
+                        {txn.description}
+                      </p>
                       {txn.isSplit && (
-                        <span className="text-xs text-purple-600">(split)</span>
+                        <span className="text-xs text-accent-purple">
+                          (split)
+                        </span>
                       )}
                     </div>
                   </div>
-                  <span className={`text-sm font-medium ${txn.type === 'income' ? 'text-green-600' : 'text-gray-900'}`}>
-                    {txn.type === 'income' ? '+' : '-'}${txn.amount.toFixed(2)}
+                  <span
+                    className={`text-sm font-medium ${txn.type === "income" ? "text-success" : "text-text-primary"}`}
+                  >
+                    {txn.type === "income" ? "+" : "-"}${txn.amount.toFixed(2)}
                   </span>
                 </div>
               ))}
@@ -631,7 +718,11 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
           onSplit={handleSplitTransaction}
           transactionId={transactionToSplit?.id || 0}
           transactionAmount={transactionToSplit?.amount || 0}
-          transactionDescription={transactionToSplit?.merchant || transactionToSplit?.description || ''}
+          transactionDescription={
+            transactionToSplit?.merchant ||
+            transactionToSplit?.description ||
+            ""
+          }
           budgetItems={getAllBudgetItems()}
           existingSplits={existingSplits}
         />
@@ -640,29 +731,52 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-lg h-full flex flex-col">
+    <div className="bg-surface rounded-xl shadow-lg h-full flex flex-col">
       {/* Tabs */}
-      <div className="flex border-b border-gray-200">
+      <div className="flex border-b border-border">
         <button
           onClick={() => setActiveTab("summary")}
           className={`cursor-pointer flex-1 px-8 py-6 transition-colors flex flex-col items-center gap-3 ${
             activeTab === "summary"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
+              ? "text-primary border-b-2 border-primary"
+              : "text-text-secondary hover:text-text-primary"
           }`}
         >
-          <FaChartPie className="text-3xl" />
+          <span
+            className={`w-14 h-14 rounded-full flex items-center justify-center ${
+              activeTab === "summary"
+                ? "bg-primary-light"
+                : "bg-surface-secondary"
+            }`}
+          >
+            <FaChartPie className="text-2xl" />
+          </span>
           <span className="text-xl font-semibold">Summary</span>
         </button>
         <button
           onClick={() => setActiveTab("transactions")}
           className={`cursor-pointer flex-1 px-8 py-6 transition-colors flex flex-col items-center gap-3 ${
             activeTab === "transactions"
-              ? "text-blue-600 border-b-2 border-blue-600"
-              : "text-gray-600 hover:text-gray-900"
+              ? "text-primary border-b-2 border-primary"
+              : "text-text-secondary hover:text-text-primary"
           }`}
         >
-          <FaReceipt className="text-3xl" />
+          <span
+            className={`relative w-14 h-14 rounded-full flex items-center justify-center ${
+              activeTab === "transactions"
+                ? "bg-primary-light"
+                : "bg-surface-secondary"
+            }`}
+          >
+            <FaReceipt className="text-2xl" />
+            {uncategorizedTxns.length > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-5 h-5 flex items-center justify-center bg-accent-orange text-white text-xs font-bold rounded-full px-1">
+                {uncategorizedTxns.length > 99
+                  ? "99+"
+                  : uncategorizedTxns.length}
+              </span>
+            )}
+          </span>
           <span className="text-xl font-semibold">Transactions</span>
         </button>
       </div>
@@ -673,36 +787,42 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
           <div className="space-y-10">
             {/* Planned Section */}
             <div>
-              <h3 className="text-xl font-semibold text-gray-700 mb-5">
+              <h3 className="text-xl font-semibold text-text-secondary mb-5">
                 Planned
               </h3>
               <div className="space-y-4">
                 <div className="flex justify-between items-center py-2">
-                  <span className="text-gray-600 text-base">Buffer:</span>
-                  <span className="text-xl font-semibold text-gray-900">
+                  <span className="text-text-secondary text-base">Buffer:</span>
+                  <span className="text-xl font-semibold text-text-primary">
                     ${buffer.toFixed(2)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-2">
-                  <span className="text-gray-600 text-base">Total Income:</span>
-                  <span className="text-xl font-semibold text-gray-900">
+                  <span className="text-text-secondary text-base">
+                    Total Income:
+                  </span>
+                  <span className="text-xl font-semibold text-text-primary">
                     ${totalIncome.toFixed(2)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-2">
-                  <span className="text-gray-600 text-base">Total Expenses:</span>
-                  <span className="text-xl font-semibold text-gray-900">
+                  <span className="text-text-secondary text-base">
+                    Total Expenses:
+                  </span>
+                  <span className="text-xl font-semibold text-text-primary">
                     ${totalExpenses.toFixed(2)}
                   </span>
                 </div>
-                <div className="border-t-2 border-gray-300 pt-4 mt-4">
+                <div className="border-t-2 border-border-strong pt-4 mt-4">
                   <div className="flex justify-between items-center">
-                    <span className="font-semibold text-gray-900 text-base">
+                    <span className="font-semibold text-text-primary text-base">
                       Remaining:
                     </span>
                     <span
                       className={`text-3xl font-bold ${
-                        remainingToBudget < 0 ? "text-red-600" : "text-gray-900"
+                        remainingToBudget < 0
+                          ? "text-danger"
+                          : "text-text-primary"
                       }`}
                     >
                       ${remainingToBudget.toFixed(2)}
@@ -714,36 +834,42 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
 
             {/* Actual Section */}
             <div>
-              <h3 className="text-xl font-semibold text-gray-700 mb-5">
+              <h3 className="text-xl font-semibold text-text-secondary mb-5">
                 Actual
               </h3>
               <div className="space-y-4">
                 <div className="flex justify-between items-center py-2">
-                  <span className="text-gray-600 text-base">Buffer:</span>
-                  <span className="text-xl font-semibold text-gray-900">
+                  <span className="text-text-secondary text-base">Buffer:</span>
+                  <span className="text-xl font-semibold text-text-primary">
                     ${buffer.toFixed(2)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-2">
-                  <span className="text-gray-600 text-base">Total Income:</span>
-                  <span className="text-xl font-semibold text-gray-900">
+                  <span className="text-text-secondary text-base">
+                    Total Income:
+                  </span>
+                  <span className="text-xl font-semibold text-text-primary">
                     ${totalActualIncome.toFixed(2)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-2">
-                  <span className="text-gray-600 text-base">Total Expenses:</span>
-                  <span className="text-xl font-semibold text-gray-900">
+                  <span className="text-text-secondary text-base">
+                    Total Expenses:
+                  </span>
+                  <span className="text-xl font-semibold text-text-primary">
                     ${totalActualExpenses.toFixed(2)}
                   </span>
                 </div>
-                <div className="border-t-2 border-gray-300 pt-4 mt-4">
+                <div className="border-t-2 border-border-strong pt-4 mt-4">
                   <div className="flex justify-between items-center">
-                    <span className="font-semibold text-gray-900 text-base">
+                    <span className="font-semibold text-text-primary text-base">
                       Remaining:
                     </span>
                     <span
                       className={`text-3xl font-bold ${
-                        actualRemaining < 0 ? "text-red-600" : "text-gray-900"
+                        actualRemaining < 0
+                          ? "text-danger"
+                          : "text-text-primary"
                       }`}
                     >
                       ${actualRemaining.toFixed(2)}
@@ -756,23 +882,25 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
         ) : (
           <div className="flex flex-col h-full -m-8">
             {/* Sub-tabs */}
-            <div className="flex border-b border-gray-200 bg-gray-50 px-4">
+            <div className="flex border-b border-border bg-surface-secondary px-4">
               <button
                 onClick={() => setTransactionSubTab("new")}
                 className={`px-4 py-3 text-sm font-medium transition-colors ${
                   transactionSubTab === "new"
-                    ? "text-orange-600 border-b-2 border-orange-600 -mb-[1px]"
-                    : "text-gray-500 hover:text-gray-700"
+                    ? "text-accent-orange border-b-2 border-accent-orange -mb-px"
+                    : "text-text-secondary hover:text-text-primary"
                 }`}
               >
-                New {uncategorizedTxns.length > 0 && `(${uncategorizedTxns.length})`}
+                New{" "}
+                {uncategorizedTxns.length > 0 &&
+                  `(${uncategorizedTxns.length})`}
               </button>
               <button
                 onClick={() => setTransactionSubTab("tracked")}
                 className={`px-4 py-3 text-sm font-medium transition-colors ${
                   transactionSubTab === "tracked"
-                    ? "text-blue-600 border-b-2 border-blue-600 -mb-[1px]"
-                    : "text-gray-500 hover:text-gray-700"
+                    ? "text-primary border-b-2 border-primary -mb-px"
+                    : "text-text-secondary hover:text-text-primary"
                 }`}
               >
                 Tracked
@@ -781,8 +909,8 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
                 onClick={() => setTransactionSubTab("deleted")}
                 className={`px-4 py-3 text-sm font-medium transition-colors ${
                   transactionSubTab === "deleted"
-                    ? "text-gray-600 border-b-2 border-gray-600 -mb-[1px]"
-                    : "text-gray-500 hover:text-gray-700"
+                    ? "text-text-secondary border-b-2 border-text-secondary -mb-px"
+                    : "text-text-secondary hover:text-text-primary"
                 }`}
               >
                 Deleted
@@ -792,9 +920,12 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
                 <button
                   onClick={handleSync}
                   disabled={isSyncing}
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded text-gray-600 disabled:opacity-50"
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-surface-secondary hover:bg-surface-secondary rounded text-text-secondary disabled:opacity-50"
                 >
-                  <FaSync className={isSyncing ? 'animate-spin' : ''} size={12} />
+                  <FaSync
+                    className={isSyncing ? "animate-spin" : ""}
+                    size={12}
+                  />
                   Sync
                 </button>
               </div>
@@ -805,59 +936,70 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
               {/* New (Uncategorized) Tab */}
               {transactionSubTab === "new" && (
                 <div className="space-y-3">
-                  {uncategorizedTxns.length === 0 && !isLoadingUncategorized && (
-                    <p className="text-gray-500 text-center py-12 text-base">
-                      No new transactions. Click &quot;Sync&quot; to import from your bank.
-                    </p>
-                  )}
+                  {uncategorizedTxns.length === 0 &&
+                    !isLoadingUncategorized && (
+                      <p className="text-text-secondary text-center py-12 text-base">
+                        No new transactions. Click &quot;Sync&quot; to import
+                        from your bank.
+                      </p>
+                    )}
                   {isLoadingUncategorized && uncategorizedTxns.length === 0 && (
-                    <p className="text-gray-500 text-center py-12 text-base">
+                    <p className="text-text-secondary text-center py-12 text-base">
                       Loading transactions...
                     </p>
                   )}
                   {uncategorizedTxns.map((txn) => (
                     <div
                       key={txn.id}
-                      className="bg-orange-50 border border-orange-100 rounded-lg p-3"
+                      className="bg-accent-orange-light border border-accent-orange-border rounded-lg p-3"
                     >
                       {assigningId === txn.id ? (
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
-                            <span className="font-medium truncate text-base">{txn.merchant || txn.description}</span>
-                            <span className={`text-base font-medium ${txn.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                              {txn.type === 'income' ? '+' : '-'}${txn.amount.toFixed(2)}
+                            <span className="font-medium truncate text-base">
+                              {txn.merchant || txn.description}
+                            </span>
+                            <span
+                              className={`text-base font-medium ${txn.type === "income" ? "text-success" : "text-danger"}`}
+                            >
+                              {txn.type === "income" ? "+" : "-"}$
+                              {txn.amount.toFixed(2)}
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
                             <select
                               value={selectedBudgetItemId}
-                              onChange={(e) => setSelectedBudgetItemId(e.target.value)}
+                              onChange={(e) =>
+                                setSelectedBudgetItemId(e.target.value)
+                              }
                               className="flex-1 text-sm border rounded px-2 py-1.5"
                             >
                               <option value="">Select item...</option>
-                              {getAllBudgetItems().map(({ category, items }) => (
-                                <optgroup key={category} label={category}>
-                                  {items.map(item => (
-                                    <option key={item.id} value={item.id}>
-                                      {item.name}
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              ))}
+                              {getAllBudgetItems().map(
+                                ({ category, items }) => (
+                                  <optgroup key={category} label={category}>
+                                    {items.map((item) => (
+                                      <option key={item.id} value={item.id}>
+                                        {item.name}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                ),
+                              )}
                             </select>
                             <button
                               onClick={() => handleAssign(txn.id)}
                               disabled={!selectedBudgetItemId}
-                              className="p-2 text-green-600 hover:bg-green-100 rounded disabled:opacity-50"
+                              className="p-2 text-success hover:bg-success-light rounded disabled:opacity-50"
                             >
                               <FaCheck size={14} />
                             </button>
                             <button
                               onClick={() => {
                                 setAssigningId(null);
-                                setSelectedBudgetItemId('');
+                                setSelectedBudgetItemId("");
                               }}
-                              className="p-2 text-gray-500 hover:bg-gray-200 rounded"
+                              className="p-2 text-text-secondary hover:bg-surface-secondary rounded"
                             >
                               <FaTimes size={14} />
                             </button>
@@ -867,33 +1009,42 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
                         <div className="flex items-center justify-between">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm text-gray-500">{formatDate(txn.date)}</span>
-                              {txn.status === 'pending' && (
-                                <span className="text-xs bg-yellow-200 text-yellow-700 px-1.5 py-0.5 rounded">pending</span>
+                              <span className="text-sm text-text-secondary">
+                                {formatDate(txn.date)}
+                              </span>
+                              {txn.status === "pending" && (
+                                <span className="text-xs bg-warning-light text-warning px-1.5 py-0.5 rounded">
+                                  pending
+                                </span>
                               )}
                             </div>
-                            <p className="text-base text-gray-900 truncate mt-1">{txn.merchant || txn.description}</p>
+                            <p className="text-base text-text-primary truncate mt-1">
+                              {txn.merchant || txn.description}
+                            </p>
                           </div>
                           <div className="flex items-center gap-2 ml-3">
-                            <span className={`text-base font-medium ${txn.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                              {txn.type === 'income' ? '+' : '-'}${txn.amount.toFixed(2)}
+                            <span
+                              className={`text-base font-medium ${txn.type === "income" ? "text-success" : "text-danger"}`}
+                            >
+                              {txn.type === "income" ? "+" : "-"}$
+                              {txn.amount.toFixed(2)}
                             </span>
                             <button
                               onClick={() => setAssigningId(txn.id)}
-                              className="px-2 py-1 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded"
+                              className="px-2 py-1 text-xs text-primary bg-primary-light hover:bg-primary-light rounded"
                             >
                               Assign
                             </button>
                             <button
                               onClick={() => openSplitModal(txn)}
-                              className="p-1 text-purple-500 hover:bg-purple-100 rounded"
+                              className="p-1 text-accent-purple hover:bg-accent-purple-light rounded"
                               title="Split transaction"
                             >
                               <HiOutlineScissors size={14} />
                             </button>
                             <button
                               onClick={() => handleDeleteUncategorized(txn.id)}
-                              className="p-1 text-red-400 hover:bg-red-100 rounded"
+                              className="p-1 text-danger hover:bg-danger-light rounded"
                             >
                               <FaTimes size={12} />
                             </button>
@@ -909,39 +1060,46 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
               {transactionSubTab === "tracked" && (
                 <div className="space-y-3">
                   {allTransactions.length === 0 && (
-                    <p className="text-gray-500 text-center py-12 text-base">
+                    <p className="text-text-secondary text-center py-12 text-base">
                       No tracked transactions yet.
                     </p>
                   )}
                   {allTransactions.map((transaction) => {
-                    const isSplit = 'isSplit' in transaction && transaction.isSplit;
+                    const isSplit =
+                      "isSplit" in transaction && transaction.isSplit;
                     return (
                       <div
                         key={transaction.id}
                         onClick={() => {
-                          if (isSplit && 'parentTransactionId' in transaction) {
-                            fetchAndOpenSplitModal(transaction.parentTransactionId);
+                          if (isSplit && "parentTransactionId" in transaction) {
+                            fetchAndOpenSplitModal(
+                              transaction.parentTransactionId,
+                            );
                           } else if (!isSplit) {
                             openEditModal(transaction as Transaction);
                           }
                         }}
-                        className="border-b border-gray-100 pb-3 last:border-0 rounded px-2 -mx-2 py-2 transition-colors cursor-pointer hover:bg-gray-50"
+                        className="border-b border-border pb-3 last:border-0 rounded px-2 -mx-2 py-2 transition-colors cursor-pointer hover:bg-surface-secondary"
                       >
                         <div className="flex justify-between items-start">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm text-gray-500">
-                                {transaction.date ? formatDate(transaction.date) : '—'}
+                              <span className="text-sm text-text-secondary">
+                                {transaction.date
+                                  ? formatDate(transaction.date)
+                                  : "—"}
                               </span>
                               {isSplit && (
-                                <span className="text-xs text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded">split</span>
+                                <span className="text-xs text-accent-purple bg-accent-purple-light px-1.5 py-0.5 rounded">
+                                  split
+                                </span>
                               )}
                             </div>
-                            <p className="text-base text-gray-900 truncate mt-1">
+                            <p className="text-base text-text-primary truncate mt-1">
                               {transaction.merchant || transaction.description}
                             </p>
                           </div>
-                          <span className="text-base font-medium text-gray-900 ml-3">
+                          <span className="text-base font-medium text-text-primary ml-3">
                             ${Math.abs(transaction.amount).toFixed(2)}
                           </span>
                         </div>
@@ -955,31 +1113,33 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
               {transactionSubTab === "deleted" && (
                 <div className="space-y-3">
                   {deletedTxns.length === 0 && (
-                    <p className="text-gray-500 text-center py-12 text-base">
+                    <p className="text-text-secondary text-center py-12 text-base">
                       No deleted transactions.
                     </p>
                   )}
                   {deletedTxns.map((txn) => (
                     <div
                       key={txn.id}
-                      className="bg-gray-100 border border-gray-200 rounded-lg p-3"
+                      className="bg-surface-secondary border border-border rounded-lg p-3"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="text-sm text-gray-400">{formatDate(txn.date)}</span>
+                            <span className="text-sm text-text-tertiary">
+                              {formatDate(txn.date)}
+                            </span>
                           </div>
-                          <p className="text-base text-gray-500 truncate line-through mt-1">
+                          <p className="text-base text-text-secondary truncate line-through mt-1">
                             {txn.merchant || txn.description}
                           </p>
                         </div>
                         <div className="flex items-center gap-2 ml-3">
-                          <span className="text-base text-gray-400 line-through">
+                          <span className="text-base text-text-tertiary line-through">
                             ${txn.amount.toFixed(2)}
                           </span>
                           <button
                             onClick={() => handleRestoreTransaction(txn.id)}
-                            className="p-1.5 text-green-600 hover:bg-green-100 rounded"
+                            className="p-1.5 text-success hover:bg-success-light rounded"
                             title="Restore"
                           >
                             <FaUndo size={14} />
@@ -998,7 +1158,7 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
                 setTransactionToEdit(null);
                 setIsAddModalOpen(true);
               }}
-              className="fixed bottom-10 right-14 w-16 h-16 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.25)] hover:shadow-[0_6px_20px_rgba(0,0,0,0.3)] flex items-center justify-center transition-all"
+              className="fixed bottom-10 right-14 w-16 h-16 bg-primary hover:bg-primary-hover text-white rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.25)] hover:shadow-[0_6px_20px_rgba(0,0,0,0.3)] flex items-center justify-center transition-all"
               title="Add Transaction"
             >
               <FaPlus size={24} />
@@ -1026,7 +1186,9 @@ export default function BudgetSummary({ budget, onRefresh, onTransactionClick, s
         onSplit={handleSplitTransaction}
         transactionId={transactionToSplit?.id || 0}
         transactionAmount={transactionToSplit?.amount || 0}
-        transactionDescription={transactionToSplit?.merchant || transactionToSplit?.description || ''}
+        transactionDescription={
+          transactionToSplit?.merchant || transactionToSplit?.description || ""
+        }
         budgetItems={getAllBudgetItems()}
         existingSplits={existingSplits}
       />

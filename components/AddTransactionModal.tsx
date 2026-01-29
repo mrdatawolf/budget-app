@@ -147,15 +147,15 @@ export default function AddTransactionModal({
 
   return (
     <div className="fixed inset-0 bg-black/15 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">
+      <div className="bg-surface rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+        <h2 className="text-2xl font-bold text-text-primary mb-6">
           {isEditMode ? 'Edit Transaction' : 'Add Transaction'}
         </h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Type - Radio buttons */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-text-secondary mb-2">
               Type
             </label>
             <div className="flex gap-4">
@@ -165,9 +165,9 @@ export default function AddTransactionModal({
                   value="expense"
                   checked={type === 'expense'}
                   onChange={(e) => setType(e.target.value as 'expense')}
-                  className="mr-2 w-4 h-4 text-blue-600"
+                  className="mr-2 w-4 h-4 text-primary"
                 />
-                <span className="text-sm text-gray-700">Expense</span>
+                <span className="text-sm text-text-secondary">Expense</span>
               </label>
               <label className="flex items-center cursor-pointer">
                 <input
@@ -175,20 +175,20 @@ export default function AddTransactionModal({
                   value="income"
                   checked={type === 'income'}
                   onChange={(e) => setType(e.target.value as 'income')}
-                  className="mr-2 w-4 h-4 text-blue-600"
+                  className="mr-2 w-4 h-4 text-primary"
                 />
-                <span className="text-sm text-gray-700">Income</span>
+                <span className="text-sm text-text-secondary">Income</span>
               </label>
             </div>
           </div>
 
           {/* Amount */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text-secondary mb-1">
               Amount
             </label>
             <div className="relative">
-              <span className="absolute left-3 top-2 text-gray-500">$</span>
+              <span className="absolute left-3 top-2 text-text-secondary">$</span>
               <input
                 type="number"
                 value={amount}
@@ -196,7 +196,7 @@ export default function AddTransactionModal({
                 onFocus={(e) => e.target.select()}
                 placeholder="0.00"
                 step="0.01"
-                className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                className="w-full pl-7 pr-3 py-2 border border-border-strong rounded focus:outline-none focus:ring-2 focus:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 required
                 autoFocus
               />
@@ -205,21 +205,21 @@ export default function AddTransactionModal({
 
           {/* Date */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text-secondary mb-1">
               Date
             </label>
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-border-strong rounded focus:outline-none focus:ring-2 focus:ring-primary"
               required
             />
           </div>
 
           {/* Merchant */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text-secondary mb-1">
               Where did you spend this money?
             </label>
             <input
@@ -228,24 +228,24 @@ export default function AddTransactionModal({
               onChange={(e) => setMerchant(e.target.value)}
               onFocus={(e) => e.target.select()}
               placeholder="e.g., Costco, Amazon, Target"
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-border-strong rounded focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
 
           {/* Account - read-only if already linked, editable otherwise */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Account <span className="text-gray-400 text-xs">(optional)</span>
+            <label className="block text-sm font-medium text-text-secondary mb-1">
+              Account <span className="text-text-tertiary text-xs">(optional)</span>
             </label>
             {hasLinkedAccount && linkedAccountDisplay ? (
-              <div className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 text-gray-600">
+              <div className="w-full px-3 py-2 border border-border rounded bg-surface-secondary text-text-secondary">
                 {linkedAccountDisplay.institutionName} - {linkedAccountDisplay.accountName} *{linkedAccountDisplay.lastFour}
               </div>
             ) : (
               <select
                 value={linkedAccountId}
                 onChange={(e) => setLinkedAccountId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="w-full px-3 py-2 border border-border-strong rounded focus:outline-none focus:ring-2 focus:ring-primary bg-surface"
               >
                 <option value="">Select an account...</option>
                 {linkedAccounts.map((acct) => (
@@ -259,13 +259,13 @@ export default function AddTransactionModal({
 
           {/* Budget Item Dropdown */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-text-secondary mb-1">
               Budget Item
             </label>
             <select
               value={budgetItemId}
               onChange={(e) => setBudgetItemId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              className="w-full px-3 py-2 border border-border-strong rounded focus:outline-none focus:ring-2 focus:ring-primary bg-surface"
               required
             >
               <option value="">Select a budget item...</option>
@@ -284,14 +284,14 @@ export default function AddTransactionModal({
           <div className="flex gap-3 mt-6">
             <button
               type="submit"
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
+              className="flex-1 px-4 py-2 bg-primary text-white rounded hover:bg-primary-hover font-medium"
             >
               {isEditMode ? 'Save Changes' : 'Add Transaction'}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 font-medium"
+              className="flex-1 px-4 py-2 bg-border-strong text-text-secondary rounded hover:bg-border-strong font-medium"
             >
               Cancel
             </button>
@@ -302,7 +302,7 @@ export default function AddTransactionModal({
             <button
               type="button"
               onClick={handleDelete}
-              className="w-full px-4 py-2 bg-red-100 text-red-600 rounded hover:bg-red-200 font-medium mt-2"
+              className="w-full px-4 py-2 bg-danger-light text-danger rounded hover:bg-danger-light font-medium mt-2"
             >
               Delete Transaction
             </button>

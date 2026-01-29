@@ -6,8 +6,8 @@ This document contains context for Claude AI to continue development on this bud
 
 A zero-based budget tracking application built with Next.js, TypeScript, and Tailwind CSS. The app features bank account integration via Teller API for automatic transaction imports.
 
-**Current Version:** v1.0.0
-**Last Session:** 2026-01-27
+**Current Version:** v1.1.0
+**Last Session:** 2026-01-28
 
 ## Tech Stack
 
@@ -18,7 +18,7 @@ A zero-based budget tracking application built with Next.js, TypeScript, and Tai
 - **Database:** SQLite (better-sqlite3)
 - **Authentication:** Clerk (@clerk/nextjs)
 - **Bank Integration:** Teller API
-- **Icons:** react-icons (FaXxx from react-icons/fa, HiXxx from react-icons/hi2)
+- **Icons:** react-icons (FaXxx from react-icons/fa only)
 
 ## Key Concepts
 
@@ -242,11 +242,13 @@ In `api/budgets/route.ts` GET handler:
 ## UI Patterns
 
 ### Colors
-- Income/positive: `text-green-600`
-- Expense/negative: `text-red-600`
-- Neutral: `text-gray-900`
-- Over budget: `text-red-600`
-- Under budget: `text-green-600`
+- All colors use semantic CSS tokens defined in `globals.css` — see `DESIGN_SYSTEM.md`
+- Income/positive: `text-success`
+- Expense/negative: `text-danger`
+- Neutral: `text-text-primary`
+- Over budget: `text-danger`
+- Under budget: `text-success`
+- Primary actions: `bg-primary` / `hover:bg-primary-hover`
 
 ### Category Emojis
 ```typescript
@@ -328,13 +330,23 @@ When testing recurring payments:
 - Use `/api/auth/claim-data` POST endpoint to claim unclaimed records (userId = '')
 - GET endpoint shows count of unclaimed records
 
+## Recent Changes (v1.1.0)
+
+### UI Overhaul
+- **Font:** Switched to Outfit (Google Fonts) via `next/font/google`
+- **Color system:** Emerald primary palette with semantic CSS tokens in `globals.css`, mapped to Tailwind via `@theme inline`
+- **Design system:** Documented in `DESIGN_SYSTEM.md`
+- **Icons:** Unified to `react-icons/fa` only (removed `react-icons/hi2`)
+- **Cursor:** Global `cursor: pointer` on all interactive elements via `@layer base`
+- **Sidebar tabs:** Summary/Transactions icons wrapped in circles with proper badge positioning
+
 ## Session Handoff Notes
 
 Last session ended after:
-1. Adding Clerk authentication (v1.0.0)
-2. Multi-user support with userId columns on key tables
-3. All API routes protected and scoped to authenticated user
-4. Fixed redirect loop issue (was caused by system clock skew)
-5. Updated README.md and CLAUDE.md to v1.0.0
+1. UI overhaul — Outfit font, Emerald color scheme, semantic tokens (v1.1.0)
+2. Unified icon library to react-icons/fa
+3. Global cursor-pointer rule
+4. Summary/Transactions tab icon circles in BudgetSummary
+5. Created DESIGN_SYSTEM.md
 
-The app is in a stable state with authentication fully working.
+The app is in a stable state with the new design system fully applied.

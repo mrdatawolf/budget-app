@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { UserButton } from '@clerk/nextjs';
+import { UserButton, useUser } from '@clerk/nextjs';
 import {
   FaWallet,
   FaUniversity,
@@ -23,6 +23,7 @@ interface NavItem {
 export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const pathname = usePathname();
+  const { user } = useUser();
 
   const navItems: NavItem[] = [
     {
@@ -58,18 +59,18 @@ export default function Sidebar() {
 
   return (
     <div
-      className={`bg-gray-900 text-white flex flex-col transition-all duration-300 ${
+      className={`bg-sidebar-bg text-white flex flex-col transition-all duration-300 ${
         isCollapsed ? 'w-16' : 'w-64'
       }`}
     >
       {/* Logo/Header */}
-      <div className="h-16 flex items-center justify-between px-4 border-b border-gray-800">
+      <div className="h-16 flex items-center justify-between px-4 border-b border-sidebar-border">
         {!isCollapsed && (
           <span className="text-xl font-bold text-white">BudgetApp</span>
         )}
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className={`p-2 hover:bg-gray-800 rounded-lg transition-colors ${
+          className={`p-2 hover:bg-sidebar-hover rounded-lg transition-colors ${
             isCollapsed ? 'mx-auto' : ''
           }`}
           title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -87,8 +88,8 @@ export default function Sidebar() {
                 href={item.href}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
                   isActive(item.href)
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                    ? 'bg-primary text-white'
+                    : 'text-sidebar-text-muted hover:bg-sidebar-hover hover:text-white'
                 }`}
                 title={isCollapsed ? item.label : undefined}
               >
@@ -101,7 +102,7 @@ export default function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className={`p-4 border-t border-gray-800 ${isCollapsed ? 'flex justify-center' : ''}`}>
+      <div className={`p-4 border-t border-sidebar-border ${isCollapsed ? 'flex justify-center' : ''}`}>
         <div className={`flex items-center ${isCollapsed ? '' : 'gap-3'}`}>
           <UserButton
             afterSignOutUrl="/sign-in"
@@ -112,7 +113,7 @@ export default function Sidebar() {
             }}
           />
           {!isCollapsed && (
-            <span className="text-sm text-gray-400">Account</span>
+            <span className="text-sm text-sidebar-text-muted">{user?.firstName || 'Account'}</span>
           )}
         </div>
       </div>

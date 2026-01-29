@@ -174,7 +174,7 @@ export default function Home() {
     return (
       <DashboardLayout>
         <div className="h-full flex items-center justify-center">
-          <div className="text-xl text-gray-600">Loading budget...</div>
+          <div className="text-xl text-text-secondary">Loading budget...</div>
         </div>
       </DashboardLayout>
     );
@@ -254,19 +254,19 @@ export default function Home() {
                 </div>
 
                 {/* Heading */}
-                <h2 className="text-2xl font-semibold text-gray-800 mb-3">
+                <h2 className="text-2xl font-semibold text-text-primary mb-3">
                   Hey there, looks like you need a budget for {getMonthName(budget.month)}.
                 </h2>
 
                 {/* Subtext */}
-                <p className="text-gray-500 mb-6">
+                <p className="text-text-secondary mb-6">
                   We&apos;ll <span className="font-semibold">copy {getPreviousMonthName(budget.month)}&apos;s budget</span> to get you started.
                 </p>
 
                 {/* CTA Button */}
                 <button
                   onClick={handleCopyFromPreviousMonth}
-                  className="px-8 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                  className="px-8 py-3 bg-primary text-white font-medium rounded-lg hover:bg-primary-hover transition-colors"
                 >
                   Start Planning for {getMonthName(budget.month)}
                 </button>
@@ -274,7 +274,7 @@ export default function Home() {
           </div>
 
           {/* Right sidebar placeholder */}
-          <div className="w-xl bg-gray-50 p-8"></div>
+          <div className="w-xl bg-surface-secondary p-8"></div>
         </div>
       </DashboardLayout>
     );
@@ -391,7 +391,7 @@ export default function Home() {
 
               {/* Add Group Button */}
               <button
-                className="w-full py-3 border-2 border-dotted border-gray-300 rounded-lg text-gray-500 hover:border-blue-500 hover:text-blue-600 transition-colors cursor-pointer"
+                className="w-full py-3 border-2 border-dotted border-border-strong rounded-lg text-text-secondary hover:border-primary hover:text-primary transition-colors cursor-pointer"
               >
                 + Add Group
               </button>
@@ -400,7 +400,7 @@ export default function Home() {
         </div>
 
         {/* Right sidebar for summary - fixed position */}
-        <div className="w-xl bg-gray-50 p-8 overflow-y-auto hide-scrollbar">
+        <div className="w-xl bg-surface-secondary p-8 overflow-y-auto hide-scrollbar">
           <BudgetSummary
             budget={budget}
             onRefresh={refreshBudget}

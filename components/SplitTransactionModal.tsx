@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { BudgetItem } from '@/types/budget';
 import { FaPlus, FaTimes } from 'react-icons/fa';
+import { useToast } from '@/contexts/ToastContext';
 
 interface SplitItem {
   budgetItemId: string;
@@ -38,6 +39,7 @@ export default function SplitTransactionModal({
   budgetItems,
   existingSplits,
 }: SplitTransactionModalProps) {
+  const toast = useToast();
   const [splits, setSplits] = useState<SplitItem[]>([
     { budgetItemId: '', amount: '', description: '' },
     { budgetItemId: '', amount: '', description: '' },
@@ -101,13 +103,13 @@ export default function SplitTransactionModal({
     const validSplits = splits.filter(s => s.budgetItemId && parseFloat(s.amount) > 0);
 
     if (validSplits.length < 2) {
-      alert('Please add at least 2 splits with amounts');
+      toast.warning('Please add at least 2 splits with amounts');
       return;
     }
 
     const remaining = calculateRemaining();
     if (Math.abs(remaining) > 0.01) {
-      alert(`Split amounts must equal the transaction amount. Remaining: $${remaining.toFixed(2)}`);
+      toast.warning(`Split amounts must equal the transaction amount. Remaining: $${remaining.toFixed(2)}`);
       return;
     }
 
@@ -127,28 +129,28 @@ export default function SplitTransactionModal({
 
   return (
     <div className="fixed inset-0 bg-black/15 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">
+      <div className="bg-surface rounded-lg p-6 max-w-lg w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto">
+        <h2 className="text-2xl font-bold text-text-primary mb-2">
           {isEditMode ? 'Edit Split' : 'Split Transaction'}
         </h2>
-        <p className="text-gray-600 mb-4">{transactionDescription}</p>
-        <div className="bg-gray-100 rounded-lg p-3 mb-6">
+        <p className="text-text-secondary mb-4">{transactionDescription}</p>
+        <div className="bg-surface-secondary rounded-lg p-3 mb-6">
           <div className="flex justify-between items-center">
-            <span className="text-gray-600">Total Amount:</span>
-            <span className="text-xl font-bold text-gray-900">${transactionAmount.toFixed(2)}</span>
+            <span className="text-text-secondary">Total Amount:</span>
+            <span className="text-xl font-bold text-text-primary">${transactionAmount.toFixed(2)}</span>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {splits.map((split, index) => (
-            <div key={index} className="border border-gray-200 rounded-lg p-4 space-y-3">
+            <div key={index} className="border border-border rounded-lg p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-700">Split {index + 1}</span>
+                <span className="text-sm font-medium text-text-secondary">Split {index + 1}</span>
                 {splits.length > 2 && (
                   <button
                     type="button"
                     onClick={() => removeSplit(index)}
-                    className="text-red-500 hover:text-red-700"
+                    className="text-danger hover:text-danger"
                   >
                     <FaTimes size={14} />
                   </button>
@@ -159,7 +161,7 @@ export default function SplitTransactionModal({
               <select
                 value={split.budgetItemId}
                 onChange={(e) => updateSplit(index, 'budgetItemId', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm"
+                className="w-full px-3 py-2 border border-border-strong rounded focus:outline-none focus:ring-2 focus:ring-primary bg-surface text-sm"
                 required
               >
                 <option value="">Select budget item...</option>
@@ -177,7 +179,7 @@ export default function SplitTransactionModal({
               {/* Amount */}
               <div className="flex gap-2">
                 <div className="relative flex-1">
-                  <span className="absolute left-3 top-2 text-gray-500">$</span>
+                  <span className="absolute left-3 top-2 text-text-secondary">$</span>
                   <input
                     type="number"
                     value={split.amount}
@@ -186,7 +188,7 @@ export default function SplitTransactionModal({
                     placeholder="0.00"
                     step="0.01"
                     min="0"
-                    className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="w-full pl-7 pr-3 py-2 border border-border-strong rounded focus:outline-none focus:ring-2 focus:ring-primary text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     required
                   />
                 </div>
@@ -194,7 +196,7 @@ export default function SplitTransactionModal({
                   <button
                     type="button"
                     onClick={() => applyRemainder(index)}
-                    className="px-3 py-2 text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 rounded whitespace-nowrap"
+                    className="px-3 py-2 text-xs bg-surface-secondary hover:bg-surface-secondary text-text-secondary rounded whitespace-nowrap"
                   >
                     + Remainder
                   </button>
@@ -207,7 +209,7 @@ export default function SplitTransactionModal({
                 value={split.description}
                 onChange={(e) => updateSplit(index, 'description', e.target.value)}
                 placeholder="Description (optional)"
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                className="w-full px-3 py-2 border border-border-strong rounded focus:outline-none focus:ring-2 focus:ring-primary text-sm"
               />
             </div>
           ))}
@@ -216,19 +218,19 @@ export default function SplitTransactionModal({
           <button
             type="button"
             onClick={addSplit}
-            className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-gray-400 hover:text-gray-600 flex items-center justify-center gap-2"
+            className="w-full py-2 border-2 border-dashed border-border-strong rounded-lg text-text-secondary hover:border-text-tertiary hover:text-text-secondary flex items-center justify-center gap-2"
           >
             <FaPlus size={12} />
             Add Another Split
           </button>
 
           {/* Remaining indicator */}
-          <div className={`p-3 rounded-lg ${isBalanced ? 'bg-green-50' : 'bg-yellow-50'}`}>
+          <div className={`p-3 rounded-lg ${isBalanced ? 'bg-success-light' : 'bg-warning-light'}`}>
             <div className="flex justify-between items-center">
-              <span className={isBalanced ? 'text-green-700' : 'text-yellow-700'}>
+              <span className={isBalanced ? 'text-success' : 'text-warning'}>
                 {isBalanced ? 'Balanced!' : 'Remaining:'}
               </span>
-              <span className={`font-bold ${isBalanced ? 'text-green-700' : 'text-yellow-700'}`}>
+              <span className={`font-bold ${isBalanced ? 'text-success' : 'text-warning'}`}>
                 ${remaining.toFixed(2)}
               </span>
             </div>
@@ -239,14 +241,14 @@ export default function SplitTransactionModal({
             <button
               type="submit"
               disabled={!isBalanced}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 px-4 py-2 bg-primary text-white rounded hover:bg-primary-hover font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isEditMode ? 'Update Split' : 'Split Transaction'}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 font-medium"
+              className="flex-1 px-4 py-2 bg-border-strong text-text-secondary rounded hover:bg-border-strong font-medium"
             >
               Cancel
             </button>

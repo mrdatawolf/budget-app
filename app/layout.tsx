@@ -1,15 +1,12 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Outfit } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
+import { ToastProvider } from "@/contexts/ToastContext";
+import { UncategorizedCountProvider } from "@/contexts/UncategorizedCountContext";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const outfit = Outfit({
+  variable: "--font-outfit",
   subsets: ["latin"],
 });
 
@@ -27,9 +24,13 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="en" className="overflow-hidden">
         <body
-          className={`${geistSans.variable} ${geistMono.variable} antialiased hide-scrollbar overflow-hidden`}
+          className={`${outfit.variable} antialiased hide-scrollbar overflow-hidden`}
         >
-          {children}
+          <ToastProvider>
+            <UncategorizedCountProvider>
+              {children}
+            </UncategorizedCountProvider>
+          </ToastProvider>
         </body>
       </html>
     </ClerkProvider>

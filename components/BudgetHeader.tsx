@@ -1,3 +1,5 @@
+import { FaChevronLeft, FaChevronRight } from "react-icons/fa";
+
 interface BudgetHeaderProps {
   month: number;
   year: number;
@@ -45,31 +47,32 @@ export default function BudgetHeader({
   const isBalanced = Math.abs(remainingToBudget) < 0.01;
 
   return (
-    <div className="p-6 border-b border-gray-200">
+    <div className="p-6 border-b border-border">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            {months[month]} {year}
+          <h1 className="text-3xl font-bold text-text-primary">
+            <span>{months[month]}</span>{" "}
+            <span className="text-text-secondary">{year}</span>
           </h1>
-          <p className="text-sm mt-1 text-gray-600">
+          <p className="text-base font-semibold mt-1 text-text-secondary">
             {isBalanced
-              ? 'Budget is balanced'
-              : `$${Math.abs(remainingToBudget).toFixed(2)} ${remainingToBudget > 0 ? 'left to budget' : 'over budget'}`
-            }
+              ? "Budget is balanced"
+              : `$${Math.abs(remainingToBudget).toFixed(2)} ${remainingToBudget > 0 ? "left to budget" : "over budget"}`}
           </p>
         </div>
-        <div className="flex items-center">
+        <div className="flex items-center border border-primary-border rounded-lg overflow-hidden">
           <button
             onClick={handlePrevMonth}
-            className="px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-l-md border border-gray-200 transition-colors"
+            className="px-3 py-2 text-primary hover:bg-primary-light transition-colors"
           >
-            &lt;
+            <FaChevronLeft size={20} />
           </button>
+          <div className="w-px h-6 bg-primary-border" />
           <button
             onClick={handleNextMonth}
-            className="px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-r-md border border-l-0 border-gray-200 transition-colors"
+            className="px-3 py-2 text-primary hover:bg-primary-light transition-colors"
           >
-            &gt;
+            <FaChevronRight size={20} />
           </button>
         </div>
       </div>
