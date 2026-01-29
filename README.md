@@ -4,8 +4,8 @@ A modern zero-based budget tracking application built with Next.js, TypeScript, 
 
 ## Project Status
 
-**Current Version:** v1.0.0 - User Authentication & Multi-User Support
-**Last Updated:** 2026-01-27
+**Current Version:** v1.2.0 - Currency Formatting & Auth Theming (Final SQLite Release)
+**Last Updated:** 2026-01-29
 
 ### Tech Stack
 - Next.js 16.x (App Router)
@@ -13,7 +13,7 @@ A modern zero-based budget tracking application built with Next.js, TypeScript, 
 - Tailwind CSS
 - ESLint
 - Drizzle ORM
-- SQLite (better-sqlite3)
+- SQLite (better-sqlite3) - **Final release using SQLite. Future versions will migrate to cloud storage.**
 - Clerk (authentication)
 - Teller API (bank integration)
 - React Icons (react-icons)
@@ -214,6 +214,14 @@ npm run db:migrate   # Run migrations
 
 ### Environment Variables
 
+Create a `.env.local` file in the root directory. You can copy `.env.example` as a starting template:
+
+```bash
+cp .env.example .env.local
+```
+
+Then fill in your credentials:
+
 **Authentication (Clerk):**
 ```env
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
@@ -224,18 +232,37 @@ NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
 
 **Bank Integration (Teller):**
 ```env
-NEXT_PUBLIC_TELLER_APP_ID=your_application_id
-TELLER_ENVIRONMENT=sandbox  # or development, production
-TELLER_SIGNING_SECRET=your_signing_secret
+TELLER_APP_ID=your_teller_app_id
+NEXT_PUBLIC_TELLER_APP_ID=your_teller_app_id
+TELLER_CERTIFICATE_PATH=./certificates/certificate.pem
+TELLER_PRIVATE_KEY_PATH=./certificates/private_key.pem
+TELLER_ENVIRONMENT=production
 ```
+
+**Note:** `.env.local` is ignored by git to keep secrets safe. Never commit it to the repository.
 
 ## Getting Started
 
-```bash
-npm install
-npm run db:push
-npm run dev
-```
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+2. **Set up environment variables:**
+   ```bash
+   cp .env.example .env.local
+   ```
+   Then edit `.env.local` and fill in your Clerk and Teller credentials.
+
+3. **Set up the database:**
+   ```bash
+   npm run db:push
+   ```
+
+4. **Start the development server:**
+   ```bash
+   npm run dev
+   ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
