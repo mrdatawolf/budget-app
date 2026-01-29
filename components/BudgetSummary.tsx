@@ -41,6 +41,7 @@ interface UncategorizedTransaction {
   type: "income" | "expense";
   merchant: string | null;
   status: string | null;
+  fromPreviousMonth?: boolean;
 }
 
 interface LinkedAccount {
@@ -973,7 +974,129 @@ export default function BudgetSummary({
                       Loading transactions...
                     </p>
                   )}
-                  {uncategorizedTxns.map((txn) => (
+                  {/* Previous month's last 3 days */}
+                  {uncategorizedTxns.filter(t => t.fromPreviousMonth).length > 0 && (
+                    <div className="mb-2">
+                      <h4 className="text-xs font-semibold text-text-tertiary uppercase tracking-wide mb-2">
+                        Previous Month (Last 3 Days)
+                      </h4>
+                    </div>
+                  )}
+                  {uncategorizedTxns.filter(t => t.fromPreviousMonth).map((txn) => (
+                    <div
+                      key={`prev-${txn.id}`}
+                      className="bg-accent-orange-light border border-accent-orange-border rounded-lg p-3"
+                    >
+                      {assigningId === txn.id ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium truncate text-base">
+                              {txn.merchant || txn.description}
+                            </span>
+                            <span
+                              className={`text-base font-medium ${txn.type === "income" ? "text-success" : "text-danger"}`}
+                            >
+                              {txn.type === "income" ? "+" : "-"}$
+                              {formatCurrency(txn.amount)}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={selectedBudgetItemId}
+                              onChange={(e) =>
+                                setSelectedBudgetItemId(e.target.value)
+                              }
+                              className="flex-1 text-sm border rounded px-2 py-1.5"
+                            >
+                              <option value="">Select item...</option>
+                              {getAllBudgetItems().map(
+                                ({ category, items }) => (
+                                  <optgroup key={category} label={category}>
+                                    {items.map((item) => (
+                                      <option key={item.id} value={item.id}>
+                                        {item.name}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                ),
+                              )}
+                            </select>
+                            <button
+                              onClick={() => handleAssign(txn.id)}
+                              disabled={!selectedBudgetItemId}
+                              className="p-2 text-success hover:bg-success-light rounded disabled:opacity-50"
+                            >
+                              <FaCheck size={14} />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setAssigningId(null);
+                                setSelectedBudgetItemId("");
+                              }}
+                              className="p-2 text-text-secondary hover:bg-surface-secondary rounded"
+                            >
+                              <FaTimes size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-text-secondary">
+                                {formatDate(txn.date)}
+                              </span>
+                              {txn.status === "pending" && (
+                                <span className="text-xs bg-warning-light text-warning px-1.5 py-0.5 rounded">
+                                  pending
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-base text-text-primary truncate mt-1">
+                              {txn.merchant || txn.description}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 ml-3">
+                            <span
+                              className={`text-base font-medium ${txn.type === "income" ? "text-success" : "text-danger"}`}
+                            >
+                              {txn.type === "income" ? "+" : "-"}$
+                              {formatCurrency(txn.amount)}
+                            </span>
+                            <button
+                              onClick={() => setAssigningId(txn.id)}
+                              className="px-2 py-1 text-xs text-primary bg-primary-light hover:bg-primary-light rounded"
+                            >
+                              Assign
+                            </button>
+                            <button
+                              onClick={() => openSplitModal(txn)}
+                              className="p-1 text-accent-purple hover:bg-accent-purple-light rounded"
+                              title="Split transaction"
+                            >
+                              <HiOutlineScissors size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUncategorized(txn.id)}
+                              className="p-1 text-danger hover:bg-danger-light rounded"
+                            >
+                              <FaTimes size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {/* Current month heading (only show if there are also previous month txns) */}
+                  {uncategorizedTxns.filter(t => t.fromPreviousMonth).length > 0 &&
+                   uncategorizedTxns.filter(t => !t.fromPreviousMonth).length > 0 && (
+                    <div className="mb-2 mt-4">
+                      <h4 className="text-xs font-semibold text-text-tertiary uppercase tracking-wide mb-2">
+                        This Month
+                      </h4>
+                    </div>
+                  )}
+                  {uncategorizedTxns.filter(t => !t.fromPreviousMonth).map((txn) => (
                     <div
                       key={txn.id}
                       className="bg-accent-orange-light border border-accent-orange-border rounded-lg p-3"

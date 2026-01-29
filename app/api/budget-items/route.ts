@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     .values({
       categoryId: parseInt(categoryId),
       name,
-      planned: planned || 0,
+      planned: planned || '0',
       order: maxOrder + 1,
     })
     .returning();

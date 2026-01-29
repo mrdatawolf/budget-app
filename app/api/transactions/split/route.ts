@@ -106,9 +106,10 @@ export async function POST(request: NextRequest) {
 
     // Validate splits sum to parent amount
     const splitTotal = splits.reduce((sum, s) => sum + s.amount, 0);
-    if (Math.abs(splitTotal - parentTxn.amount) > 0.01) {
+    const parentAmount = parseFloat(String(parentTxn.amount));
+    if (Math.abs(splitTotal - parentAmount) > 0.01) {
       return NextResponse.json({
-        error: `Split amounts (${splitTotal.toFixed(2)}) must equal transaction amount (${parentTxn.amount.toFixed(2)})`
+        error: `Split amounts (${splitTotal.toFixed(2)}) must equal transaction amount (${parentAmount.toFixed(2)})`
       }, { status: 400 });
     }
 
@@ -131,7 +132,7 @@ export async function POST(request: NextRequest) {
         .values({
           parentTransactionId: transactionId,
           budgetItemId: split.budgetItemId,
-          amount: split.amount,
+          amount: String(split.amount),
           description: split.description || null,
         })
         .returning();

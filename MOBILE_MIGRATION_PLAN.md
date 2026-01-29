@@ -333,14 +333,27 @@ Ensure buttons/interactive elements are at least 44x44px for mobile.
 
 ---
 
+## Actual Migration Status
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| Phase 1: Supabase Setup | ✅ Done | Project created, credentials configured |
+| Phase 2: Dependencies | ✅ Done | `postgres` added, `better-sqlite3` removed |
+| Phase 3: PostgreSQL Schema | ✅ Done | All tables converted, numeric type fixes applied |
+| Phase 4: Data Migration | ✅ Done | `scripts/migrate-data.ts` — all 7 tables migrated |
+| Phase 5: Edge Functions | ⏭️ Skipped | Not needed — Next.js API routes work directly with Supabase PostgreSQL via Drizzle. Deno conversion would add complexity with no benefit. Teller mTLS certs would need special handling. |
+| Phase 6: Capacitor | ✅ Done | Live server mode (wraps deployed URL, no static export) |
+| Phase 7: iOS/Android | ⏳ Deferred | `@capacitor/ios` and `@capacitor/android` not yet installed |
+| Phase 8: Mobile UI | ⏳ Deferred | Waiting on Phase 7 |
+
 ## Verification Checklist
 
-- [ ] Supabase project created with all tables
-- [ ] Existing data migrated successfully
-- [ ] Edge Functions deployed and working
-- [ ] Web app works with new backend
-- [ ] iOS app builds and runs
-- [ ] Android app builds and runs
-- [ ] Bank sync works via Edge Functions
-- [ ] All CRUD operations work on mobile
-- [ ] UI looks correct on mobile (safe areas, etc.)
+- [x] Supabase project created with all tables
+- [x] Existing data migrated successfully
+- [x] ~~Edge Functions deployed~~ Skipped — using Next.js API routes directly
+- [x] Web app works with new backend
+- [ ] iOS app builds and runs (Phase 7 deferred)
+- [ ] Android app builds and runs (Phase 7 deferred)
+- [x] Bank sync works (via Next.js API routes → Supabase)
+- [ ] All CRUD operations work on mobile (pending Phase 7)
+- [ ] UI looks correct on mobile (pending Phase 8)

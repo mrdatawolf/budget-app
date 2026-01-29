@@ -55,7 +55,7 @@ export default function SplitTransactionModal({
         // Pre-populate with existing splits
         setSplits(existingSplits.map(s => ({
           budgetItemId: s.budgetItemId.toString(),
-          amount: s.amount.toFixed(2),
+          amount: parseFloat(String(s.amount)).toFixed(2),
           description: s.description || '',
         })));
       } else {

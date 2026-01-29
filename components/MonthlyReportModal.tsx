@@ -85,7 +85,7 @@ export default function MonthlyReportModal({ isOpen, onClose, budget }: MonthlyR
 
             if (key === 'income') {
               totalIncome = catActual;
-            } else {
+            } else if (key !== 'saving') {
               totalExpenses += catActual;
             }
           });
@@ -110,7 +110,7 @@ export default function MonthlyReportModal({ isOpen, onClose, budget }: MonthlyR
   const totalIncome = budget.categories.income.items.reduce((sum, item) => sum + item.actual, 0);
   const totalPlannedIncome = budget.categories.income.items.reduce((sum, item) => sum + item.planned, 0);
 
-  const expenseCategories = Object.entries(budget.categories).filter(([key]) => key !== 'income');
+  const expenseCategories = Object.entries(budget.categories).filter(([key]) => key !== 'income' && key !== 'saving');
   const totalExpenses = expenseCategories.reduce((sum, [, category]) => {
     return sum + category.items.reduce((catSum, item) => catSum + item.actual, 0);
   }, 0);

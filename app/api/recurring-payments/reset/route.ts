@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     .update(recurringPayments)
     .set({
       nextDueDate,
-      fundedAmount: 0,
+      fundedAmount: '0',
       updatedAt: new Date(),
     })
     .where(eq(recurringPayments.id, parseInt(id)))

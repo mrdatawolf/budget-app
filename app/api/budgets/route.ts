@@ -5,13 +5,14 @@ import { eq, and, asc } from 'drizzle-orm';
 import { requireAuth, isAuthError } from '@/lib/auth';
 
 // Helper to calculate monthly contribution based on frequency
-function getMonthlyContribution(amount: number, frequency: string): number {
+function getMonthlyContribution(amount: string | number, frequency: string): string {
+  const amt = typeof amount === 'string' ? parseFloat(amount) : amount;
   switch (frequency) {
-    case 'monthly': return amount;
-    case 'quarterly': return amount / 3;
-    case 'semi-annually': return amount / 6;
-    case 'annually': return amount / 12;
-    default: return amount;
+    case 'monthly': return String(amt);
+    case 'quarterly': return String(amt / 3);
+    case 'semi-annually': return String(amt / 6);
+    case 'annually': return String(amt / 12);
+    default: return String(amt);
   }
 }
 
