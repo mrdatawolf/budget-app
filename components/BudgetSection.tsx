@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { BudgetCategory, BudgetItem, Transaction } from "@/types/budget";
-import { FaTrash } from "react-icons/fa";
+import { FaTrash, FaChevronDown, FaChevronRight } from "react-icons/fa";
 import {
   DndContext,
   closestCenter,
@@ -100,7 +100,7 @@ function SortableItem({
       <div
         onClick={() => onItemClick?.(item)}
         className={`grid grid-cols-10 gap-4 items-center py-2 rounded cursor-pointer transition-colors ${
-          isSelected ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-gray-50'
+          isSelected ? 'bg-primary-light ring-1 ring-primary-border' : 'hover:bg-surface-secondary'
         }`}
       >
         <div className="col-span-6 flex items-center gap-2">
@@ -118,7 +118,7 @@ function SortableItem({
               onPointerDown={(e) => {
                 e.stopPropagation();
               }}
-              className="text-red-600 hover:text-red-700 cursor-pointer"
+              className="text-danger hover:text-danger cursor-pointer"
               title="Delete item"
               type="button"
             >
@@ -128,7 +128,7 @@ function SortableItem({
           <button
             {...attributes}
             {...listeners}
-            className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 px-1"
+            className="cursor-grab active:cursor-grabbing text-text-tertiary hover:text-text-secondary px-1"
             title="Drag to reorder"
           >
             ⋮⋮
@@ -136,9 +136,9 @@ function SortableItem({
           {(item.transactions.length > 0 || (item.splitTransactions?.length || 0) > 0) && (
             <button
               onClick={() => onToggleExpanded(item.id)}
-              className="text-gray-500 hover:text-gray-700"
+              className="text-text-secondary hover:text-text-primary"
             >
-              {isExpanded ? "▼" : "▶"}
+              {isExpanded ? <FaChevronDown size={10} /> : <FaChevronRight size={10} />}
             </button>
           )}
           <input
@@ -168,15 +168,15 @@ function SortableItem({
                 e.currentTarget.blur();
               }
             }}
-            className="flex-1 font-medium text-gray-900 px-2 py-1 border border-transparent hover:bg-gray-50 focus:border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 font-medium text-text-primary px-2 py-1 border border-transparent hover:bg-surface-secondary focus:border-primary rounded focus:outline-none focus:ring-2 focus:ring-primary"
           />
           {item.recurringPaymentId && (
-            <span className="text-xs text-blue-500" title="Recurring payment">
+            <span className="text-xs text-primary" title="Recurring payment">
               🔄
             </span>
           )}
           {(item.transactions.length > 0 || (item.splitTransactions?.length || 0) > 0) && (
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-text-secondary">
               ({item.transactions.length + (item.splitTransactions?.length || 0)})
             </span>
           )}
@@ -218,29 +218,29 @@ function SortableItem({
                 e.currentTarget.blur();
               }
             }}
-            className="w-full text-right px-2 py-1 border border-transparent hover:bg-gray-50 focus:border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full text-right px-2 py-1 border border-transparent hover:bg-surface-secondary focus:border-primary rounded focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
         <div className="col-span-2">
-          <div className="text-right px-2 py-1 text-gray-700 font-medium">
+          <div className="text-right px-2 py-1 text-text-secondary font-medium">
             ${showRemaining ? (item.planned - item.actual).toFixed(2) : item.actual.toFixed(2)}
           </div>
         </div>
       </div>
 
       {/* Progress bar as bottom border */}
-      <div className="h-px w-full bg-gray-100">
+      <div className="h-px w-full bg-surface-secondary">
         <div
           className={`h-full transition-all duration-300 ${
-            isOverBudget ? 'bg-red-500 shadow-[0_0_2px_rgba(239,68,68,0.4)]' : 'bg-blue-500 shadow-[0_0_2px_rgba(59,130,246,0.4)]'
+            isOverBudget ? 'bg-danger shadow-[0_0_2px_rgba(239,68,68,0.4)]' : 'bg-primary-light0 shadow-[0_0_2px_rgba(59,130,246,0.4)]'
           }`}
           style={{ width: `${isOverBudget ? 100 : progressPercent}%` }}
         />
       </div>
 
       {isExpanded && (item.transactions.length > 0 || (item.splitTransactions?.length || 0) > 0) && (
-        <div className="ml-8 mb-3 bg-gray-50 rounded p-3">
-          <div className="text-xs font-semibold text-gray-600 mb-2">
+        <div className="ml-8 mb-3 bg-surface-secondary rounded p-3">
+          <div className="text-xs font-semibold text-text-secondary mb-2">
             Transactions
           </div>
           <div className="space-y-1">
@@ -250,18 +250,18 @@ function SortableItem({
               <div
                 key={transaction.id}
                 onClick={() => onTransactionClick?.(transaction)}
-                className="flex items-center justify-between text-sm py-1 hover:bg-white rounded px-2 cursor-pointer transition-colors"
+                className="flex items-center justify-between text-sm py-1 hover:bg-surface rounded px-2 cursor-pointer transition-colors"
               >
                 <div className="flex-1">
-                  <span className="text-gray-600">
+                  <span className="text-text-secondary">
                     {new Date(transaction.date).toLocaleDateString()}
                   </span>
-                  <span className="ml-3 text-gray-900">
+                  <span className="ml-3 text-text-primary">
                     {transaction.merchant || transaction.description}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`font-medium ${transaction.type === 'income' ? 'text-green-600' : 'text-gray-900'}`}>
+                  <span className={`font-medium ${transaction.type === 'income' ? 'text-success' : 'text-text-primary'}`}>
                     {transaction.type === 'income' ? '+' : ''}${transaction.amount.toFixed(2)}
                   </span>
                   <button
@@ -269,7 +269,7 @@ function SortableItem({
                       e.stopPropagation();
                       onDeleteTransaction(transaction.id);
                     }}
-                    className="text-red-600 hover:text-red-800 text-xs"
+                    className="text-danger hover:text-danger text-xs"
                   >
                     ×
                   </button>
@@ -283,19 +283,19 @@ function SortableItem({
               <div
                 key={`split-${split.id}`}
                 onClick={() => onSplitClick?.(split.parentTransactionId)}
-                className="flex items-center justify-between text-sm py-1 px-2 bg-purple-50 rounded cursor-pointer hover:bg-purple-100 transition-colors"
+                className="flex items-center justify-between text-sm py-1 px-2 bg-accent-purple-light rounded cursor-pointer hover:bg-accent-purple-light transition-colors"
               >
                 <div className="flex-1">
-                  <span className="text-gray-600">
+                  <span className="text-text-secondary">
                     {split.parentDate ? new Date(split.parentDate).toLocaleDateString() : '—'}
                   </span>
-                  <span className="ml-3 text-gray-900">
+                  <span className="ml-3 text-text-primary">
                     {split.description || split.parentMerchant || split.parentDescription || 'Split'}
                   </span>
-                  <span className="ml-2 text-xs text-purple-600">(split)</span>
+                  <span className="ml-2 text-xs text-accent-purple">(split)</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`font-medium ${split.parentType === 'income' ? 'text-green-600' : 'text-gray-900'}`}>
+                  <span className={`font-medium ${split.parentType === 'income' ? 'text-success' : 'text-text-primary'}`}>
                     {split.parentType === 'income' ? '+' : ''}${split.amount.toFixed(2)}
                   </span>
                 </div>
@@ -495,24 +495,24 @@ export default function BudgetSection({
 
   return (
     <>
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-        <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="bg-surface rounded-lg shadow-sm overflow-hidden">
+        <div className="bg-surface border-b border-border px-6 py-4">
           <div className="grid grid-cols-10 gap-4 items-center">
-            <h2 className="col-span-6 text-xl font-semibold text-gray-800 flex items-center gap-2">
+            <h2 className="col-span-6 text-xl font-semibold text-text-primary flex items-center gap-2">
               <span>{categoryEmoji}</span>
               <span>{category.name}</span>
               {isFulfilled && (
-                <span className="text-green-500 text-base" title="Category fulfilled">✓</span>
+                <span className="text-success text-base" title="Category fulfilled">✓</span>
               )}
             </h2>
-            <div className="col-span-2 text-right text-gray-700">
+            <div className="col-span-2 text-right text-text-secondary">
               <div className="text-sm opacity-90">Planned</div>
               <div className="text-lg font-semibold">
                 ${totalPlanned.toFixed(2)}
               </div>
             </div>
             <div
-              className="col-span-2 text-right text-gray-700 cursor-pointer hover:bg-gray-50 rounded px-2 py-1 -mx-2 -my-1 transition-colors"
+              className="col-span-2 text-right text-text-secondary cursor-pointer hover:bg-surface-secondary rounded px-2 py-1 -mx-2 -my-1 transition-colors"
               onClick={() => setShowRemaining(!showRemaining)}
               title="Click to toggle between Actual and Remaining"
             >
@@ -526,12 +526,12 @@ export default function BudgetSection({
 
         <div className="p-6">
           {category.items.length === 0 && !isAddingItem && (
-            <p className="text-gray-500 text-center py-4">No items added yet</p>
+            <p className="text-text-secondary text-center py-4">No items added yet</p>
           )}
 
           {category.items.length > 0 && (
             <div className="space-y-2">
-              <div className="grid grid-cols-10 gap-4 text-sm font-semibold text-gray-600 pb-2 border-b">
+              <div className="grid grid-cols-10 gap-4 text-sm font-semibold text-text-secondary pb-2 border-b">
                 <div className="col-span-6">Item</div>
                 <div className="col-span-2 text-right">Planned</div>
                 <div className="col-span-2 text-right">{showRemaining ? 'Remaining' : actualLabel}</div>
@@ -583,12 +583,12 @@ export default function BudgetSection({
                 onKeyDown={(e) => e.key === "Enter" && addItem()}
                 onFocus={(e) => e.target.select()}
                 placeholder="Item name"
-                className="flex-1 px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 px-3 py-2 border border-border-strong rounded focus:outline-none focus:ring-2 focus:ring-primary"
                 autoFocus
               />
               <button
                 onClick={addItem}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                className="px-4 py-2 bg-primary text-white rounded hover:bg-primary-hover"
               >
                 Add
               </button>
@@ -597,7 +597,7 @@ export default function BudgetSection({
                   setIsAddingItem(false);
                   setNewItemName("");
                 }}
-                className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+                className="px-4 py-2 bg-surface-secondary text-text-secondary rounded hover:bg-surface-secondary"
               >
                 Cancel
               </button>
@@ -607,7 +607,7 @@ export default function BudgetSection({
           {!isAddingItem && (
             <button
               onClick={() => setIsAddingItem(true)}
-              className="mt-4 text-sm text-gray-400 hover:text-blue-600 transition-colors cursor-pointer"
+              className="mt-4 text-sm text-text-tertiary hover:text-primary transition-colors cursor-pointer"
             >
               Add Item
             </button>

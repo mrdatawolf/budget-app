@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Script from 'next/script';
 import { FaUniversity, FaTrash, FaSync } from 'react-icons/fa';
 import DashboardLayout from '@/components/DashboardLayout';
+import { useToast } from '@/contexts/ToastContext';
 
 interface LinkedAccount {
   id: number;
@@ -33,6 +34,7 @@ declare global {
 }
 
 export default function SettingsPage() {
+  const toast = useToast();
   const [accounts, setAccounts] = useState<LinkedAccount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -59,7 +61,7 @@ export default function SettingsPage() {
 
   const handleConnectBank = () => {
     if (!tellerReady || !window.TellerConnect) {
-      alert('Teller Connect is not ready yet. Please try again.');
+      toast.warning('Teller Connect is not ready yet. Please try again.');
       return;
     }
 
@@ -78,14 +80,15 @@ export default function SettingsPage() {
 
           if (response.ok) {
             fetchAccounts();
+            toast.success('Bank account connected successfully');
           } else {
             const errorData = await response.json();
             console.error('Failed to save account:', errorData);
-            alert(`Failed to save account: ${errorData.error || 'Unknown error'}`);
+            toast.error(`Failed to save account: ${errorData.error || 'Unknown error'}`);
           }
         } catch (error) {
           console.error('Error saving account:', error);
-          alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          toast.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       },
       onExit: () => {
@@ -93,7 +96,7 @@ export default function SettingsPage() {
       },
       onFailure: (error) => {
         console.error('Teller Connect failed:', error);
-        alert(`Failed to connect: ${error.message}`);
+        toast.error(`Failed to connect: ${error.message}`);
       },
     });
 
@@ -151,14 +154,14 @@ export default function SettingsPage() {
         onLoad={() => setTellerReady(true)}
       />
 
-      <div className="h-full overflow-y-auto bg-gray-100 p-8">
+      <div className="h-full overflow-y-auto bg-surface-secondary p-8">
         <div className="max-w-4xl mx-auto">
-          <h1 className="text-3xl font-bold text-gray-900 mb-8">Accounts</h1>
+          <h1 className="text-3xl font-bold text-text-primary mb-8">Accounts</h1>
 
           {/* Bank Connections Section */}
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="bg-surface rounded-lg shadow p-6 mb-6">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-gray-900">
+              <h2 className="text-xl font-semibold text-text-primary">
                 Linked Bank Accounts
               </h2>
               <div className="flex gap-3">
@@ -166,7 +169,7 @@ export default function SettingsPage() {
                   <button
                     onClick={handleSyncAll}
                     disabled={isSyncing}
-                    className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50"
+                    className="flex items-center gap-2 px-4 py-2 bg-text-secondary text-white rounded-lg hover:bg-text-secondary disabled:opacity-50"
                   >
                     <FaSync className={isSyncing ? 'animate-spin' : ''} />
                     {isSyncing ? 'Syncing...' : 'Sync All'}
@@ -175,7 +178,7 @@ export default function SettingsPage() {
                 <button
                   onClick={handleConnectBank}
                   disabled={!tellerReady}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover disabled:opacity-50"
                 >
                   <FaUniversity />
                   Connect Bank
@@ -184,16 +187,16 @@ export default function SettingsPage() {
             </div>
 
             {syncResult && (
-              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-800">
+              <div className="mb-4 p-3 bg-success-light border border-success rounded-lg text-success">
                 Sync complete: {syncResult.synced} new transactions imported, {syncResult.skipped} already existed
               </div>
             )}
 
             {isLoading ? (
-              <p className="text-gray-500">Loading accounts...</p>
+              <p className="text-text-secondary">Loading accounts...</p>
             ) : accounts.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <FaUniversity className="mx-auto text-4xl mb-3 text-gray-300" />
+              <div className="text-center py-8 text-text-secondary">
+                <FaUniversity className="mx-auto text-4xl mb-3 text-text-tertiary" />
                 <p>No bank accounts connected yet.</p>
                 <p className="text-sm mt-1">
                   Click &quot;Connect Bank&quot; to link your bank account and import transactions.
@@ -204,20 +207,20 @@ export default function SettingsPage() {
                 {accounts.map(account => (
                   <div
                     key={account.id}
-                    className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border"
+                    className="flex items-center justify-between p-4 bg-surface-secondary rounded-lg border"
                   >
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                        <FaUniversity className="text-blue-600" />
+                      <div className="w-12 h-12 bg-primary-light rounded-full flex items-center justify-center">
+                        <FaUniversity className="text-primary" />
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900">
+                        <p className="font-medium text-text-primary">
                           {account.institutionName}
                         </p>
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-text-secondary">
                           {account.accountName} •••• {account.lastFour}
                         </p>
-                        <p className="text-xs text-gray-400">
+                        <p className="text-xs text-text-tertiary">
                           Last synced: {formatDate(account.lastSyncedAt)}
                         </p>
                       </div>
@@ -226,15 +229,15 @@ export default function SettingsPage() {
                       <span
                         className={`px-2 py-1 text-xs rounded-full ${
                           account.status === 'open'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
+                            ? 'bg-success-light text-success'
+                            : 'bg-danger-light text-danger'
                         }`}
                       >
                         {account.accountSubtype}
                       </span>
                       <button
                         onClick={() => handleDeleteAccount(account.id)}
-                        className="p-2 text-red-500 hover:bg-red-50 rounded"
+                        className="p-2 text-danger hover:bg-danger-light rounded"
                         title="Disconnect account"
                       >
                         <FaTrash />
@@ -247,7 +250,7 @@ export default function SettingsPage() {
           </div>
 
           {/* Instructions */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+          <div className="bg-primary-light border border-primary-border rounded-lg p-4 text-sm text-primary">
             <p className="font-medium mb-2">How it works:</p>
             <ol className="list-decimal list-inside space-y-1">
               <li>Click &quot;Connect Bank&quot; to securely link your bank account via Teller</li>

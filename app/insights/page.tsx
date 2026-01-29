@@ -32,24 +32,24 @@ export default function InsightsPage() {
 
   return (
     <DashboardLayout>
-      <div className="h-full overflow-y-auto bg-gray-100 p-8">
+      <div className="h-full overflow-y-auto bg-surface-secondary p-8">
         <div className="max-w-4xl mx-auto">
-          <h1 className="text-3xl font-bold text-gray-900 mb-8">Insights</h1>
+          <h1 className="text-3xl font-bold text-text-primary mb-8">Insights</h1>
 
           {/* Monthly Summary Card */}
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="bg-surface rounded-lg shadow p-6 mb-6">
             <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                <FaChartPie className="text-blue-600 text-xl" />
+              <div className="w-12 h-12 bg-primary-light rounded-full flex items-center justify-center">
+                <FaChartPie className="text-primary text-xl" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-gray-900">Monthly Summary</h2>
-                <p className="text-gray-600">Review your budget performance for the month</p>
+                <h2 className="text-xl font-semibold text-text-primary">Monthly Summary</h2>
+                <p className="text-text-secondary">Review your budget performance for the month</p>
               </div>
             </div>
             <button
               onClick={() => setIsReportModalOpen(true)}
-              className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              className="w-full py-3 bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors font-medium"
             >
               View Monthly Report
             </button>
@@ -57,33 +57,33 @@ export default function InsightsPage() {
 
           {/* Coming Soon Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white rounded-lg shadow p-6 opacity-60">
+            <div className="bg-surface rounded-lg shadow p-6 opacity-60">
               <div className="flex items-center gap-4 mb-4">
-                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                  <FaChartLine className="text-green-600 text-xl" />
+                <div className="w-12 h-12 bg-success-light rounded-full flex items-center justify-center">
+                  <FaChartLine className="text-success text-xl" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900">Spending Trends</h2>
-                  <p className="text-gray-600">Track your spending over time</p>
+                  <h2 className="text-xl font-semibold text-text-primary">Spending Trends</h2>
+                  <p className="text-text-secondary">Track your spending over time</p>
                 </div>
               </div>
-              <div className="text-center py-8 text-gray-400">
+              <div className="text-center py-8 text-text-tertiary">
                 <p className="font-medium">Coming Soon</p>
                 <p className="text-sm">Graphs showing spending patterns across months</p>
               </div>
             </div>
 
-            <div className="bg-white rounded-lg shadow p-6 opacity-60">
+            <div className="bg-surface rounded-lg shadow p-6 opacity-60">
               <div className="flex items-center gap-4 mb-4">
-                <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
-                  <FaChartBar className="text-purple-600 text-xl" />
+                <div className="w-12 h-12 bg-accent-purple-light rounded-full flex items-center justify-center">
+                  <FaChartBar className="text-accent-purple text-xl" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900">Category Analysis</h2>
-                  <p className="text-gray-600">Deep dive into category spending</p>
+                  <h2 className="text-xl font-semibold text-text-primary">Category Analysis</h2>
+                  <p className="text-text-secondary">Deep dive into category spending</p>
                 </div>
               </div>
-              <div className="text-center py-8 text-gray-400">
+              <div className="text-center py-8 text-text-tertiary">
                 <p className="font-medium">Coming Soon</p>
                 <p className="text-sm">Detailed breakdowns by category</p>
               </div>

@@ -33,16 +33,16 @@ export default function BufferSection({ budgetId, buffer, onRefresh }: BufferSec
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
+    <div className="bg-surface rounded-lg shadow-sm overflow-hidden">
+      <div className="bg-surface border-b border-border px-6 py-4 flex items-center justify-between">
+        <h2 className="text-xl font-semibold text-text-primary flex items-center gap-2">
           <span>💼</span>
           <span>Starting Balance (Buffer)</span>
         </h2>
         <div className="flex items-center gap-2">
-          <span className="text-sm opacity-90 text-gray-700">Amount:</span>
-          <div className="bg-gray-50 rounded px-3 py-1">
-            <span className="text-gray-500">$</span>
+          <span className="text-sm opacity-90 text-text-secondary">Amount:</span>
+          <div className="bg-surface-secondary rounded px-3 py-1">
+            <span className="text-text-secondary">$</span>
             <input
               type="number"
               value={editingValue !== undefined ? editingValue : buffer || ''}
@@ -62,13 +62,13 @@ export default function BufferSection({ budgetId, buffer, onRefresh }: BufferSec
                   e.currentTarget.blur();
                 }
               }}
-              className="w-32 text-right px-1 py-0 text-lg font-semibold text-gray-900 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none bg-gray-50"
+              className="w-32 text-right px-1 py-0 text-lg font-semibold text-text-primary focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none bg-surface-secondary"
               step="0.01"
             />
           </div>
         </div>
       </div>
-      <div className="px-6 py-3 text-sm text-gray-600">
+      <div className="px-6 py-3 text-sm text-text-secondary">
         This is the amount carried over from the previous month
       </div>
     </div>
