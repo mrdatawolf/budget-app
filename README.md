@@ -4,8 +4,8 @@ A modern zero-based budget tracking application built with Next.js, TypeScript, 
 
 ## Project Status
 
-**Current Version:** v1.3.1 - Build Fix
-**Last Updated:** 2026-01-29
+**Current Version:** v1.6.0 - Tablet Responsiveness & Deployment Prep
+**Last Updated:** 2026-01-31
 
 ### Tech Stack
 - Next.js 16.x (App Router)
@@ -13,11 +13,12 @@ A modern zero-based budget tracking application built with Next.js, TypeScript, 
 - Tailwind CSS
 - ESLint
 - Drizzle ORM
-- SQLite (better-sqlite3) - **Final release using SQLite. Future versions will migrate to cloud storage.**
+- Supabase (PostgreSQL) via Drizzle ORM
 - Clerk (authentication)
 - Teller API (bank integration)
 - React Icons (react-icons)
-- React Hooks (useState, useEffect, useCallback)
+- D3.js + d3-sankey (charts)
+- Capacitor (mobile — live server mode)
 
 ### Features
 
@@ -38,9 +39,10 @@ A modern zero-based budget tracking application built with Next.js, TypeScript, 
 - Revisitable via "Getting Started" link in sidebar
 
 #### Dashboard Layout
-- Collapsible sidebar navigation
+- Collapsible sidebar navigation (auto-collapses on tablet)
 - Three main sections: Budget, Accounts, Insights
-- Responsive design with smooth transitions
+- Tablet responsive (768px+) with toggle drawer for summary sidebar
+- Mobile block screen on phones (< 768px)
 - Monthly Summary accessible from sidebar sub-menu
 
 #### Zero-Based Budgeting
@@ -121,6 +123,7 @@ Accessible via sidebar navigation:
 - **Tracked Transactions Tab**: View all categorized transactions including split portions
 - **Deleted Transactions Tab**: View and restore soft-deleted transactions
 - Assign transactions to budget items via dropdown
+- Merchant-based categorization suggestions from historical data
 - Edit transaction details (date, description, amount, merchant, type)
 - Manual transaction entry with floating add button
 - Click on any transaction to edit or delete
@@ -150,10 +153,9 @@ Comprehensive end-of-month budget review accessed via Insights > Monthly Summary
 - Planned vs Actual comparison
 
 **Buffer Flow:**
-- Current Buffer amount
 - Total Underspent (sum of all under-budget items)
 - Total Overspent (sum of all over-budget items)
-- Projected Next Month Buffer calculation
+- Projected Next Month Buffer = Underspent - Overspent
 
 **Category Breakdown:**
 - Each category with planned, actual, and difference
@@ -171,8 +173,14 @@ Comprehensive end-of-month budget review accessed via Insights > Monthly Summary
 - Suggestions for next month's budget adjustments
 - Hidden for new users with no spending data
 
+#### Insights & Charts
+- **Budget vs Actual** — horizontal grouped bar chart per category
+- **Spending Trends** — multi-line chart over last 3 months with interactive legend
+- **Cash Flow (Sankey)** — 3-column flow diagram: Sources → Categories → Budget Items
+- Multi-month data fetching for trend analysis
+
 #### Data Persistence
-- All budget data stored in local SQLite database
+- All budget data stored in Supabase PostgreSQL
 - Multi-month support - create and manage budgets for different months/years
 - Soft delete for transactions (recoverable)
 - Automatic budget creation when navigating to new month
@@ -184,14 +192,14 @@ Comprehensive end-of-month budget review accessed via Insights > Monthly Summary
 | `/` | Budget | Main budget view with categories, transactions, and summary |
 | `/recurring` | Recurring | Manage recurring payments and subscriptions |
 | `/settings` | Accounts | Bank account management and Teller integration |
-| `/insights` | Insights | Insights hub with Monthly Summary and future analytics |
+| `/insights` | Insights | Interactive charts (Budget vs Actual, Spending Trends, Cash Flow) and Monthly Summary |
 | `/onboarding` | Onboarding | Interactive 6-step guided setup for new users |
 | `/sign-in` | Sign In | Clerk authentication - sign in page |
 | `/sign-up` | Sign Up | Clerk authentication - sign up page |
 
 ### Database
 
-The app uses SQLite for local data storage with Drizzle ORM for type-safe database operations.
+The app uses Supabase PostgreSQL with Drizzle ORM for type-safe database operations.
 
 **Database Commands:**
 ```bash
@@ -241,6 +249,11 @@ NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
 CLERK_SECRET_KEY=sk_test_...
 NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
 NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+```
+
+**Database (Supabase):**
+```env
+DATABASE_URL=postgresql://postgres.xxx:password@aws-0-us-east-1.pooler.supabase.com:6543/postgres
 ```
 
 **Bank Integration (Teller):**
@@ -320,6 +333,7 @@ budget-app/
 │   ├── BudgetSummary.tsx         # Right sidebar summary
 │   ├── BufferSection.tsx         # Buffer amount editor
 │   ├── DashboardLayout.tsx       # Main layout wrapper
+│   ├── MobileBlockScreen.tsx     # Mobile block screen (< 768px)
 │   ├── MonthlyReportModal.tsx    # Monthly report modal
 │   ├── Sidebar.tsx               # Collapsible navigation with UserButton
 │   ├── SplitTransactionModal.tsx # Split transaction interface
@@ -337,6 +351,9 @@ budget-app/
 ├── lib/
 │   ├── auth.ts                   # Authentication helpers
 │   ├── budgetHelpers.ts          # Data transformation utilities
+│   ├── chartColors.ts            # Category color mapping for charts
+│   ├── chartHelpers.ts           # Chart data transformation utilities
+│   ├── formatCurrency.ts         # Currency formatting utility
 │   └── teller.ts                 # Teller API client
 ├── scripts/
 │   ├── check-schema.ts           # Verify database schema

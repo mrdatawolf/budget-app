@@ -6,8 +6,8 @@ This document contains context for Claude AI to continue development on this bud
 
 A zero-based budget tracking application built with Next.js, TypeScript, and Tailwind CSS. The app features bank account integration via Teller API for automatic transaction imports.
 
-**Current Version:** v1.5.0
-**Last Session:** 2026-01-30
+**Current Version:** v1.6.0
+**Last Session:** 2026-01-31
 
 ## Tech Stack
 
@@ -559,15 +559,63 @@ DATABASE_URL=postgresql://postgres.xxx:password@aws-0-us-east-1.pooler.supabase.
 - `useRef` for SVG elements, `useEffect` for D3 rendering, `useMemo` for data transforms
 - Responsive via `viewBox` + `preserveAspectRatio="xMidYMid meet"`
 
+## Recent Changes (v1.6.0)
+
+### Tablet Responsiveness & Mobile Block Screen
+- **Mobile block screen** (`components/MobileBlockScreen.tsx`) — full-screen overlay on screens < 768px telling users to use a tablet or larger device
+- **DashboardLayout** — added `MobileBlockScreen`, main layout uses `hidden md:flex` (hidden < 768px)
+- **Sidebar auto-collapse** — defaults to collapsed on screens < 1024px via `window.matchMedia` listener
+- **Summary sidebar toggle drawer** — on tablet (md–lg), right sidebar is a floating drawer toggled by a FAB button; on lg+ it's always visible
+- **Responsive padding** — insights, recurring, settings pages use `p-4 lg:p-8`
+
+### Month/Year Selection Persistence
+- Selected month/year persists across page navigations via URL search params
+- Sidebar navigation links include current `?month=X&year=Y` query params
+
+### Transaction Categorization Suggestions
+- Merchant-based suggestion badges on uncategorized transactions
+- Backend: `GET /api/teller/sync` returns `suggestedBudgetItemId` based on most frequent historical merchant→budgetItem pairing
+- Frontend: clickable badge on each transaction for one-tap categorization
+
+### Transaction Display Improvements
+- Show all transactions regardless of date, grouped by month
+- Transactions limited to ±7 days of current budget month boundaries
+- Uncategorized count updates to match filtered transactions
+
+### Monthly Report Buffer Fix
+- Removed `incomeVariance` from buffer projection (planned income is adjusted on the fly)
+- Removed "Current Buffer" row from Buffer Flow UI — projection is now simply `underspent - overspent`
+
+### Split Transaction Actual Calculation Fix
+- Fixed `budgetHelpers.ts` to correctly calculate split transaction actuals by checking `parentTransaction.type`
+- Income splits reduce expense category actuals; expense splits increase them
+
+### Vercel Deployment Fix
+- Excluded `scripts/` directory from `tsconfig.json` to prevent build failure from old SQLite migration scripts importing `better-sqlite3`
+
+### New Files
+- `components/MobileBlockScreen.tsx` — mobile block screen component
+
+### Key File Changes
+- `components/DashboardLayout.tsx` — MobileBlockScreen + hidden md:flex
+- `components/Sidebar.tsx` — auto-collapse on tablet via matchMedia
+- `app/page.tsx` — summary sidebar toggle drawer for tablet
+- `app/insights/page.tsx` — responsive padding
+- `app/recurring/page.tsx` — responsive padding
+- `app/settings/page.tsx` — responsive padding
+- `components/MonthlyReportModal.tsx` — simplified buffer projection formula
+- `lib/budgetHelpers.ts` — split transaction actual calculation fix
+- `app/api/teller/sync/route.ts` — merchant-based suggestions
+- `tsconfig.json` — exclude scripts directory
+
 ## Session Handoff Notes
 
 Last session ended after:
-1. Installed D3.js and d3-sankey dependencies
-2. Created chart infrastructure (colors, helpers, types, tooltip, empty state)
-3. Implemented Budget vs Actual bar chart
-4. Implemented Spending Trends multi-line chart with interactive legend
-5. Implemented Cash Flow Sankey diagram with 3-column layout
-6. Updated insights page with multi-month fetching and all 3 charts
-7. Build verified passing
+1. Fixed Monthly Report buffer projection (removed income variance and current buffer double-counting)
+2. Added tablet responsiveness with mobile block screen, sidebar auto-collapse, and summary drawer
+3. Added merchant-based transaction categorization suggestions
+4. Fixed split transaction actual calculations in budgetHelpers
+5. Fixed Vercel build error (excluded scripts/ from tsconfig)
+6. Build verified passing
 
-The app is in a stable state with v1.5.0 changes applied.
+The app is in a stable state with v1.6.0 changes applied. Ready for Vercel deployment behind Cloudflare.
