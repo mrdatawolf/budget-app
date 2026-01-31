@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.0] - 2026-01-31 - Tablet Responsiveness & Deployment Prep
+
+### Added
+- **Mobile block screen** — full-screen overlay on screens < 768px with message to use a tablet or larger device
+- **Sidebar auto-collapse** — sidebar defaults to collapsed on screens < 1024px with `matchMedia` resize listener
+- **Summary sidebar toggle drawer** — floating action button on tablet (768–1024px) to open/close the summary sidebar as an overlay drawer
+- **Transaction categorization suggestions** — merchant-based suggestion badges on uncategorized transactions using historical categorization data
+- **Month/year persistence** — selected month/year carries across page navigations via URL search params
+
+### Changed
+- Responsive padding on insights, recurring, and settings pages (`p-4 lg:p-8`)
+- DashboardLayout hides main content below 768px, shows MobileBlockScreen instead
+- Transaction list shows all transactions grouped by month, limited to ±7 days of budget month boundaries
+- Uncategorized transaction count matches filtered results
+
+### Fixed
+- **Buffer projection formula** — removed income variance (planned income adjusted on the fly) and removed current buffer double-counting; projection is now `underspent - overspent`
+- **Split transaction actuals** — `budgetHelpers.ts` now checks `parentTransaction.type` to correctly handle income vs expense splits
+- **Vercel build error** — excluded `scripts/` from `tsconfig.json` to prevent `better-sqlite3` import errors from old migration scripts
+
 ## [1.5.0] - 2026-01-30 - Interactive Insights Charts
 
 ### Added
