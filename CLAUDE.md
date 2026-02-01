@@ -6,7 +6,7 @@ This document contains context for Claude AI to continue development on this bud
 
 A zero-based budget tracking application built with Next.js, TypeScript, and Tailwind CSS. The app features bank account integration via Teller API for automatic transaction imports.
 
-**Current Version:** v1.6.0
+**Current Version:** v1.7.0
 **Last Session:** 2026-01-31
 
 ## Tech Stack
@@ -283,20 +283,21 @@ const emojiMap: Record<string, string> = {
 - **Multi-user support** - each user sees only their own data
 - **Interactive onboarding** - 6-step guided setup for new users
 - Full budget CRUD with categories and items
+- **Custom budget categories** — user-created categories with name + emoji, deletable, carry over on copy
 - Transaction management (add, edit, soft delete, restore)
 - Split transactions across multiple budget items
 - **Edit existing splits** by clicking split transactions (from Item Detail, Tracked tab, or BudgetSection dropdown)
 - Bank integration via Teller
 - Recurring payments with linking to budget items
+- **Recurring payment auto-reset** — due dates auto-advance and funded amounts reset when period passes
 - Budget item detail view in sidebar
-- Monthly report with Buffer Flow and empty-state handling
-- Copy budget from previous month
+- Monthly report with Buffer Flow (including "Left to Budget") and empty-state handling
+- Copy budget from previous month (including custom categories)
 - **Insights charts** — Budget vs Actual (bar), Spending Trends (line), Cash Flow (Sankey)
+- **Accounts grouped by institution** on settings page
 
 ### Potential Future Work
-- The "Add Group" button at bottom of budget page is non-functional (placeholder)
 - Could add ability to edit recurring payment from budget item detail view
-- Could add recurring payment auto-advance when marked as paid
 - Cross-chart filtering (click category to filter all charts)
 - Export charts as PNG/SVG
 - Custom date range selector for trends (6 months, 1 year)
@@ -559,6 +560,47 @@ DATABASE_URL=postgresql://postgres.xxx:password@aws-0-us-east-1.pooler.supabase.
 - `useRef` for SVG elements, `useEffect` for D3 rendering, `useMemo` for data transforms
 - Responsive via `viewBox` + `preserveAspectRatio="xMidYMid meet"`
 
+## Recent Changes (v1.7.0)
+
+### Custom Budget Categories
+- **"Add Group" button** now functional — opens modal with name input and searchable emoji picker (130+ emojis in 12 groups)
+- `CategoryType` changed from fixed union to `string`; `Budget.categories` is now `Record<string, BudgetCategory>`
+- Custom categories rendered dynamically: income first → defaults → custom → saving last
+- Custom categories show delete button on hover (cascade deletes items + transactions)
+- Custom categories carry over via "Copy from previous month" (not auto-created in new months)
+- DB schema: added `emoji` (text, nullable) and `categoryOrder` (integer) columns to `budget_categories`
+- New API: `POST /api/budget-categories` (create), `DELETE /api/budget-categories?id=X` (delete)
+- Chart helpers/colors updated to support dynamic categories with hash-based color assignment
+
+### Recurring Payment Auto-Reset
+- In `budgets/route.ts` GET handler: checks each active recurring payment's `nextDueDate`
+- If due date has passed, advances it by one frequency period (loops until future date)
+- Resets `fundedAmount` to `'0'` so progress bar starts fresh
+- Monthly payments already had dynamic funded amount (from current month transactions), but DB value now stays consistent
+
+### Buffer Flow: Left to Budget
+- `MonthlyReportModal.tsx` — added "Left to Budget" row: `max(0, buffer + totalPlannedIncome - allPlannedExpenses)`
+- Projected buffer formula: `Underspent - Overspent + Left to Budget`
+
+### Accounts Grouped by Institution
+- `settings/page.tsx` — linked bank accounts grouped by institution name using `reduce`
+
+### Key Files Modified
+- `db/schema.ts` — emoji + categoryOrder columns
+- `types/budget.ts` — CategoryType → string, Budget.categories → Record, DefaultCategoryType union, DEFAULT_CATEGORIES array
+- `types/chart.ts` — string keys instead of CategoryType import
+- `lib/budgetHelpers.ts` — dynamic category initialization from DB data
+- `lib/chartColors.ts` — DefaultCategoryType, custom color palette, hash-based color index
+- `lib/chartHelpers.ts` — dynamic category key derivation
+- `app/api/budget-categories/route.ts` — NEW (POST/DELETE)
+- `app/api/budgets/route.ts` — recurring auto-reset logic
+- `app/api/budgets/copy/route.ts` — custom category creation in target
+- `app/page.tsx` — dynamic category rendering, Add Group modal, emoji picker
+- `app/settings/page.tsx` — institution grouping
+- `components/BudgetSection.tsx` — stored emoji support
+- `components/MonthlyReportModal.tsx` — Left to Budget + stored emoji
+- `components/charts/SpendingTrendsChart.tsx` — dynamic category keys
+
 ## Recent Changes (v1.6.0)
 
 ### Tablet Responsiveness & Mobile Block Screen
@@ -611,11 +653,13 @@ DATABASE_URL=postgresql://postgres.xxx:password@aws-0-us-east-1.pooler.supabase.
 ## Session Handoff Notes
 
 Last session ended after:
-1. Fixed Monthly Report buffer projection (removed income variance and current buffer double-counting)
-2. Added tablet responsiveness with mobile block screen, sidebar auto-collapse, and summary drawer
-3. Added merchant-based transaction categorization suggestions
-4. Fixed split transaction actual calculations in budgetHelpers
-5. Fixed Vercel build error (excluded scripts/ from tsconfig)
-6. Build verified passing
+1. Implemented custom budget categories (Add Group button, emoji picker, dynamic rendering, API, chart support)
+2. Added "Left to Budget" to Monthly Report buffer flow projection
+3. Grouped linked bank accounts by institution on settings page
+4. Expanded emoji picker from 30 to 130+ emojis in 12 searchable groups
+5. Added recurring payment auto-reset (auto-advance nextDueDate + reset fundedAmount when period passes)
+6. Updated types: CategoryType → string, Budget.categories → Record<string, BudgetCategory>
+7. DB schema updated: added emoji and categoryOrder columns to budget_categories (pushed to Supabase)
+8. Build verified passing
 
-The app is in a stable state with v1.6.0 changes applied. Ready for Vercel deployment behind Cloudflare.
+The app is in a stable state with v1.7.0 changes applied. Schema has been pushed to Supabase (`db:push`).

@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.0] - 2026-01-31 - Custom Categories, Recurring Auto-Reset & UI Improvements
+
+### Added
+- **Custom budget categories** — "Add Group" button creates user-defined categories with name and emoji
+  - Slugified category keys for DB storage
+  - Hash-based color assignment for charts
+  - Delete custom categories (cascade deletes items and transactions)
+  - Custom categories carry over via "Copy from previous month"
+- **Expanded emoji picker** — 130+ emojis organized in 12 searchable groups (Finance, Home, Transport, Food, Health, Education, Kids & Pets, Fun, Giving, Travel, Work, Nature)
+- **Recurring payment auto-reset** — when `nextDueDate` passes, automatically advances to next period and resets `fundedAmount` to 0
+  - Handles multiple missed periods (e.g., app not opened for 3 months)
+  - Runs on budget GET endpoint (when any month loads)
+- **"Left to Budget" in Buffer Flow** — Monthly Report projected buffer now includes unallocated money: `Projected = Underspent - Overspent + Left to Budget`
+- **Accounts grouped by institution** — Settings page groups linked bank accounts under their institution name
+- **Budget category API** (`/api/budget-categories`) — POST to create, DELETE to remove custom categories
+
+### Changed
+- `CategoryType` changed from fixed 8-value union to `string` to support custom categories
+- `Budget.categories` changed from fixed object shape to `Record<string, BudgetCategory>`
+- Budget page renders categories dynamically (income first, defaults, custom, saving last)
+- Chart helpers derive category keys dynamically from budget data instead of hardcoded arrays
+- Chart colors use `DefaultCategoryType` for built-in categories, hash-based palette for custom
+- `getCategoryEmoji()` now accepts stored emoji from DB, falling back to defaults
+- DB schema: added `emoji` (text, nullable) and `categoryOrder` (integer) columns to `budget_categories`
+
+### Fixed
+- Copy budget now creates custom categories in target budget when they don't exist
+
 ## [1.6.0] - 2026-01-31 - Tablet Responsiveness & Deployment Prep
 
 ### Added

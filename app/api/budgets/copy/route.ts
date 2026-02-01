@@ -89,9 +89,21 @@ export async function POST(request: NextRequest) {
 
   // Copy items from source to target
   for (const sourceCategory of sourceBudget.categories) {
-    const targetCategory = targetBudget.categories.find(
+    let targetCategory = targetBudget.categories.find(
       (c) => c.categoryType === sourceCategory.categoryType
     );
+
+    // Create custom category in target if it doesn't exist
+    if (!targetCategory) {
+      const [newCat] = await db.insert(budgetCategories).values({
+        budgetId: targetBudget.id,
+        categoryType: sourceCategory.categoryType,
+        name: sourceCategory.name,
+        emoji: sourceCategory.emoji,
+        categoryOrder: sourceCategory.categoryOrder ?? 0,
+      }).returning();
+      targetCategory = newCat;
+    }
 
     if (targetCategory && sourceCategory.items.length > 0) {
       for (const item of sourceCategory.items) {

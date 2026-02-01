@@ -1,10 +1,8 @@
-import { CategoryType } from './budget';
-
 /**
  * Data structure for category-level chart data
  */
 export interface CategoryChartData {
-  key: CategoryType;     // Category key (e.g., 'food', 'household')
+  key: string;           // Category key (e.g., 'food', 'household', or custom slug)
   name: string;          // Display name (e.g., 'Food', 'Household')
   emoji: string;         // Category emoji (e.g., '🍽️', '🏠')
   planned: number;       // Total planned amount for category
@@ -19,7 +17,7 @@ export interface MonthlyTrendData {
   month: string;         // Month name (e.g., 'Jan', 'Feb', 'Mar')
   year: number;          // Year
   date: Date;            // Full date object for D3 time scales
-  categories: Record<CategoryType, number>; // categoryKey → actual spending
+  categories: Record<string, number>; // categoryKey → actual spending
 }
 
 /**

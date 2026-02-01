@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState, useMemo } from 'react';
 import * as d3 from 'd3';
-import { Budget, CategoryType } from '@/types/budget';
+import { Budget } from '@/types/budget';
 import { transformBudgetsToTrendData } from '@/lib/chartHelpers';
 import { formatCurrency } from '@/lib/formatCurrency';
 import { getCategoryColor, getCategoryEmoji } from '@/lib/chartColors';
@@ -24,23 +24,27 @@ export default function SpendingTrendsChart({ budgets }: SpendingTrendsChartProp
     content: null as React.ReactNode,
   });
 
-  const categoryKeys: CategoryType[] = [
-    'giving',
-    'household',
-    'transportation',
-    'food',
-    'personal',
-    'insurance',
-    'saving',
-  ];
+  // Derive category keys dynamically from all budgets (exclude income)
+  const categoryKeys = useMemo(() => {
+    const keys = new Set<string>();
+    budgets.forEach((b) => {
+      Object.keys(b.categories).filter(k => k !== 'income').forEach(k => keys.add(k));
+    });
+    return Array.from(keys);
+  }, [budgets]);
 
-  const [visibleCategories, setVisibleCategories] = useState<Set<CategoryType>>(
+  const [visibleCategories, setVisibleCategories] = useState<Set<string>>(
     new Set(categoryKeys)
   );
 
+  // Keep visibleCategories in sync when categoryKeys change
+  useEffect(() => {
+    setVisibleCategories(new Set(categoryKeys));
+  }, [categoryKeys]);
+
   const trendData = useMemo(() => transformBudgetsToTrendData(budgets), [budgets]);
 
-  const toggleCategory = (key: CategoryType) => {
+  const toggleCategory = (key: string) => {
     setVisibleCategories((prev) => {
       const next = new Set(prev);
       if (next.has(key)) {
@@ -187,7 +191,7 @@ export default function SpendingTrendsChart({ budgets }: SpendingTrendsChartProp
                     {monthData.month} {monthData.year}
                   </div>
                   <div className="text-text-secondary">
-                    {getCategoryEmoji(key)} {budgets[0]?.categories[key]?.name || key}:{' '}
+                    {getCategoryEmoji(key, budgets[0]?.categories[key]?.emoji)} {budgets[0]?.categories[key]?.name || key}:{' '}
                     {formatCurrency(d.value)}
                   </div>
                 </div>
@@ -223,8 +227,9 @@ export default function SpendingTrendsChart({ budgets }: SpendingTrendsChartProp
           {categoryKeys.map((key) => {
             const isVisible = visibleCategories.has(key);
             const color = getCategoryColor(key);
-            const emoji = getCategoryEmoji(key);
-            const name = budgets[0]?.categories[key]?.name || key;
+            const cat = budgets[0]?.categories[key];
+            const emoji = getCategoryEmoji(key, cat?.emoji);
+            const name = cat?.name || key;
 
             return (
               <button

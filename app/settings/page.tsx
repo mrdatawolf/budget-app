@@ -203,45 +203,56 @@ export default function SettingsPage() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {accounts.map(account => (
-                  <div
-                    key={account.id}
-                    className="flex items-center justify-between p-4 bg-surface-secondary rounded-lg border"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-primary-light rounded-full flex items-center justify-center">
+              <div className="space-y-4">
+                {Object.entries(
+                  accounts.reduce<Record<string, LinkedAccount[]>>((groups, account) => {
+                    const key = account.institutionName;
+                    if (!groups[key]) groups[key] = [];
+                    groups[key].push(account);
+                    return groups;
+                  }, {})
+                ).map(([institution, institutionAccounts]) => (
+                  <div key={institution} className="bg-surface-secondary rounded-lg border overflow-hidden">
+                    {/* Institution header */}
+                    <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+                      <div className="w-10 h-10 bg-primary-light rounded-full flex items-center justify-center">
                         <FaUniversity className="text-primary" />
                       </div>
-                      <div>
-                        <p className="font-medium text-text-primary">
-                          {account.institutionName}
-                        </p>
-                        <p className="text-sm text-text-secondary">
-                          {account.accountName} •••• {account.lastFour}
-                        </p>
-                        <p className="text-xs text-text-tertiary">
-                          Last synced: {formatDate(account.lastSyncedAt)}
-                        </p>
-                      </div>
+                      <h3 className="font-semibold text-text-primary">{institution}</h3>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`px-2 py-1 text-xs rounded-full ${
-                          account.status === 'open'
-                            ? 'bg-success-light text-success'
-                            : 'bg-danger-light text-danger'
-                        }`}
-                      >
-                        {account.accountSubtype}
-                      </span>
-                      <button
-                        onClick={() => handleDeleteAccount(account.id)}
-                        className="p-2 text-danger hover:bg-danger-light rounded"
-                        title="Disconnect account"
-                      >
-                        <FaTrash />
-                      </button>
+
+                    {/* Accounts under this institution */}
+                    <div className="divide-y divide-border">
+                      {institutionAccounts.map(account => (
+                        <div key={account.id} className="flex items-center justify-between px-4 py-3">
+                          <div className="pl-13">
+                            <p className="font-medium text-text-primary">
+                              {account.accountName} •••• {account.lastFour}
+                            </p>
+                            <p className="text-xs text-text-tertiary">
+                              Last synced: {formatDate(account.lastSyncedAt)}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`px-2 py-1 text-xs rounded-full ${
+                                account.status === 'open'
+                                  ? 'bg-success-light text-success'
+                                  : 'bg-danger-light text-danger'
+                              }`}
+                            >
+                              {account.accountSubtype}
+                            </span>
+                            <button
+                              onClick={() => handleDeleteAccount(account.id)}
+                              className="p-2 text-danger hover:bg-danger-light rounded"
+                              title="Disconnect account"
+                            >
+                              <FaTrash />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))}
