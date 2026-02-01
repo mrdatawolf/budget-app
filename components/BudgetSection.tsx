@@ -306,8 +306,9 @@ function SortableItem({
   );
 }
 
-// Map category names to emojis
-const getCategoryEmoji = (categoryName: string): string => {
+// Map category names to emojis (supports custom categories via stored emoji)
+const getCategoryEmojiLocal = (categoryName: string, storedEmoji?: string | null): string => {
+  if (storedEmoji) return storedEmoji;
   const emojiMap: Record<string, string> = {
     'Income': '💰',
     'Giving': '🤲',
@@ -486,7 +487,7 @@ export default function BudgetSection({
     0
   );
 
-  const categoryEmoji = getCategoryEmoji(category.name);
+  const categoryEmoji = getCategoryEmojiLocal(category.name, category.emoji);
   const isFulfilled = totalPlanned > 0 && Math.abs(totalPlanned - totalActual) < 0.01;
   const isIncome = category.name === 'Income';
   const actualLabel = isIncome ? 'Received' : 'Spent';

@@ -100,6 +100,35 @@ export async function GET(request: NextRequest) {
       where: and(eq(recurringPayments.userId, userId), eq(recurringPayments.isActive, true)),
     });
 
+    // Auto-advance recurring payments whose due date has passed
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (const recurring of activeRecurring) {
+      const dueDate = new Date(recurring.nextDueDate);
+      dueDate.setHours(0, 0, 0, 0);
+
+      if (dueDate < today) {
+        // Advance nextDueDate by one frequency period (keep advancing until it's in the future)
+        const next = new Date(dueDate);
+        const monthsToAdd =
+          recurring.frequency === 'monthly' ? 1 :
+          recurring.frequency === 'quarterly' ? 3 :
+          recurring.frequency === 'semi-annually' ? 6 : 12;
+
+        while (next < today) {
+          next.setMonth(next.getMonth() + monthsToAdd);
+        }
+
+        await db.update(recurringPayments)
+          .set({ nextDueDate: next.toISOString().split('T')[0], fundedAmount: '0' })
+          .where(eq(recurringPayments.id, recurring.id));
+
+        recurring.nextDueDate = next.toISOString().split('T')[0];
+        recurring.fundedAmount = '0';
+      }
+    }
+
     let itemsCreated = false;
 
     for (const recurring of activeRecurring) {

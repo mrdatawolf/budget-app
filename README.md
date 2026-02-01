@@ -4,7 +4,7 @@ A modern zero-based budget tracking application built with Next.js, TypeScript, 
 
 ## Project Status
 
-**Current Version:** v1.6.0 - Tablet Responsiveness & Deployment Prep
+**Current Version:** v1.7.0 - Custom Categories & Recurring Auto-Reset
 **Last Updated:** 2026-01-31
 
 ### Tech Stack
@@ -59,7 +59,7 @@ A modern zero-based budget tracking application built with Next.js, TypeScript, 
 - Displays "Budget is balanced" when fully allocated
 
 #### Budget Categories
-Each category displays with an emoji indicator:
+8 default categories with emoji indicators:
 - 💰 Income (separate tracking)
 - 🤲 Giving
 - 🏠 Household
@@ -68,6 +68,14 @@ Each category displays with an emoji indicator:
 - 👤 Personal
 - 🛡️ Insurance
 - 💵 Saving
+
+**Custom Categories:**
+- Create custom categories via "Add Group" button with name and emoji
+- 130+ emojis organized in 12 searchable groups
+- Custom categories appear between defaults and Saving
+- Deletable (cascade deletes items and transactions)
+- Carry over via "Copy from previous month" (not auto-created in new months)
+- Supported in all charts and monthly report
 
 #### Category Features
 - Collapsible sections with expand/collapse all
@@ -104,6 +112,7 @@ Accessible via sidebar navigation:
 - 60-day upcoming payments warning banner
 - Category assignment for auto-creation in new budgets
 - Due date tracking with days-until-due display
+- **Auto-reset** — due dates auto-advance and funded amounts reset when payment period passes
 
 #### Buffer Section
 - 💼 Buffer tracks money carried over from previous month
@@ -155,7 +164,8 @@ Comprehensive end-of-month budget review accessed via Insights > Monthly Summary
 **Buffer Flow:**
 - Total Underspent (sum of all under-budget items)
 - Total Overspent (sum of all over-budget items)
-- Projected Next Month Buffer = Underspent - Overspent
+- Left to Budget (unallocated money)
+- Projected Next Month Buffer = Underspent - Overspent + Left to Budget
 
 **Category Breakdown:**
 - Each category with planned, actual, and difference
@@ -301,6 +311,7 @@ budget-app/
 │   │   ├── auth/
 │   │   │   └── claim-data/       # Claim unclaimed data for user
 │   │   ├── budgets/              # Budget CRUD operations
+│   │   ├── budget-categories/    # Custom category CRUD
 │   │   ├── onboarding/           # Onboarding status CRUD
 │   │   ├── budget-items/         # Budget item management
 │   │   │   └── reorder/          # Drag-and-drop reorder endpoint
@@ -375,6 +386,10 @@ budget-app/
 - `PUT /api/budget-items` - Update budget item
 - `DELETE /api/budget-items?id=X` - Delete budget item
 - `POST /api/budget-items/reorder` - Reorder items via drag-and-drop
+
+### Budget Categories
+- `POST /api/budget-categories` - Create custom category (name, emoji, budgetId)
+- `DELETE /api/budget-categories?id=X` - Delete custom category (cascade deletes items/transactions)
 
 ### Transactions
 - `POST /api/transactions` - Create transaction

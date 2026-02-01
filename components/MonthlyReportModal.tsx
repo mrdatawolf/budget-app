@@ -137,10 +137,14 @@ export default function MonthlyReportModal({ isOpen, onClose, budget }: MonthlyR
     });
   });
 
-  // Projected next buffer = underspent - overspent
-  // Buffer is already allocated into planned amounts, so it's not added again.
-  // Income variance is not included because planned income is adjusted on the fly.
-  const theoreticalNextBuffer = totalUnderspent - totalOverspent;
+  // Left to budget = unallocated money (buffer + income - all planned expenses including saving)
+  const allPlannedExpenses = Object.entries(budget.categories)
+    .filter(([key]) => key !== 'income')
+    .reduce((sum, [, category]) => sum + category.items.reduce((s, item) => s + item.planned, 0), 0);
+  const leftToBudget = Math.max(0, buffer + totalPlannedIncome - allPlannedExpenses);
+
+  // Projected next buffer = underspent - overspent + left to budget
+  const theoreticalNextBuffer = totalUnderspent - totalOverspent + leftToBudget;
 
   // Category summaries
   const categorySummaries: CategorySummary[] = Object.entries(budget.categories)
@@ -153,7 +157,7 @@ export default function MonthlyReportModal({ isOpen, onClose, budget }: MonthlyR
 
       return {
         name: category.name,
-        emoji: categoryEmojis[category.name] || '📋',
+        emoji: category.emoji || categoryEmojis[category.name] || '📋',
         planned,
         actual,
         difference,
@@ -299,6 +303,14 @@ export default function MonthlyReportModal({ isOpen, onClose, budget }: MonthlyR
                   <span className="text-text-secondary">- Overspent</span>
                   <span className="font-semibold text-danger">-${formatCurrency(totalOverspent)}</span>
                 </div>
+
+                {/* Left to Budget */}
+                {leftToBudget > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-text-secondary">+ Left to Budget</span>
+                    <span className="font-semibold text-success">+${formatCurrency(leftToBudget)}</span>
+                  </div>
+                )}
 
                 {/* Divider */}
                 <div className="border-t border-border-strong my-2"></div>
