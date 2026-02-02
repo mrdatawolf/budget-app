@@ -4,7 +4,7 @@ export interface Transaction {
   description: string;
   amount: number;
   budgetItemId: string | null;
-  linkedAccountId?: number | null;
+  linkedAccountId?: string | null;
   type: 'income' | 'expense';
   merchant?: string | null;
   checkNumber?: string | null;
@@ -33,12 +33,12 @@ export interface BudgetItem {
   actual: number;
   transactions: Transaction[];
   splitTransactions?: SplitTransaction[];
-  recurringPaymentId?: number | null;
+  recurringPaymentId?: string | null;
 }
 
 export interface BudgetCategory {
   id: string;
-  dbId?: number | null;
+  dbId?: string | null;
   name: string;
   items: BudgetItem[];
 }
@@ -54,7 +54,7 @@ export type CategoryType =
   | 'saving';
 
 export interface Budget {
-  id?: number;
+  id?: string;
   month: number;
   year: number;
   buffer: number;
@@ -73,7 +73,7 @@ export interface Budget {
 export type RecurringFrequency = 'monthly' | 'quarterly' | 'semi-annually' | 'annually';
 
 export interface RecurringPayment {
-  id: number;
+  id: string;
   name: string;
   amount: number; // Total amount due
   frequency: RecurringFrequency;

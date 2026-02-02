@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
 
   // Verify category ownership through budget
   const category = await db.query.budgetCategories.findFirst({
-    where: eq(budgetCategories.id, parseInt(categoryId)),
+    where: eq(budgetCategories.id, categoryId),
     with: { budget: true },
   });
 
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
 
   // Get the max order for this category
   const existingItems = await db.query.budgetItems.findMany({
-    where: eq(budgetItems.categoryId, parseInt(categoryId)),
+    where: eq(budgetItems.categoryId, categoryId),
   });
   const maxOrder = existingItems.length > 0
     ? Math.max(...existingItems.map(item => item.order || 0))
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   const [item] = await db
     .insert(budgetItems)
     .values({
-      categoryId: parseInt(categoryId),
+      categoryId: categoryId,
       name,
       planned: planned || '0',
       order: maxOrder + 1,
@@ -61,7 +61,7 @@ export async function PUT(request: NextRequest) {
 
   // Verify item ownership through category -> budget
   const item = await db.query.budgetItems.findFirst({
-    where: eq(budgetItems.id, parseInt(id)),
+    where: eq(budgetItems.id, id),
     with: {
       category: {
         with: { budget: true },
@@ -80,7 +80,7 @@ export async function PUT(request: NextRequest) {
   const [updatedItem] = await db
     .update(budgetItems)
     .set(updates)
-    .where(eq(budgetItems.id, parseInt(id)))
+    .where(eq(budgetItems.id, id))
     .returning();
 
   return NextResponse.json(updatedItem);
@@ -100,7 +100,7 @@ export async function DELETE(request: NextRequest) {
 
   // Verify item ownership through category -> budget
   const item = await db.query.budgetItems.findFirst({
-    where: eq(budgetItems.id, parseInt(id)),
+    where: eq(budgetItems.id, id),
     with: {
       category: {
         with: { budget: true },
@@ -112,7 +112,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Item not found' }, { status: 404 });
   }
 
-  await db.delete(budgetItems).where(eq(budgetItems.id, parseInt(id)));
+  await db.delete(budgetItems).where(eq(budgetItems.id, id));
 
   return NextResponse.json({ success: true });
 }

@@ -12,7 +12,7 @@ import { Budget, Transaction, BudgetItem } from "@/types/budget";
 import { transformDbBudgetToAppBudget } from "@/lib/budgetHelpers";
 
 interface LinkedAccount {
-  id: number;
+  id: string;
   accountName: string;
   institutionName: string;
   lastFour: string;
@@ -129,8 +129,8 @@ export default function Home() {
   // Handle clicking on a transaction to edit it
   const handleTransactionClick = (transaction: Transaction) => {
     setTransactionToEdit({
-      id: parseInt(transaction.id),
-      budgetItemId: transaction.budgetItemId ? parseInt(transaction.budgetItemId) : null,
+      id: transaction.id,
+      budgetItemId: transaction.budgetItemId || null,
       linkedAccountId: transaction.linkedAccountId,
       date: transaction.date,
       description: transaction.description,
@@ -142,9 +142,9 @@ export default function Home() {
   };
 
   const handleEditTransaction = async (transaction: {
-    id: number;
+    id: string;
     budgetItemId: string;
-    linkedAccountId?: number;
+    linkedAccountId?: string;
     date: string;
     description: string;
     amount: number;
@@ -168,7 +168,7 @@ export default function Home() {
     }
   };
 
-  const handleDeleteFromModal = async (id: number) => {
+  const handleDeleteFromModal = async (id: string) => {
     try {
       const response = await fetch(`/api/transactions?id=${id}`, {
         method: 'DELETE',

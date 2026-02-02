@@ -511,3 +511,162 @@ Last session ended after:
 9. Build verified passing
 
 The app is in a stable state with v1.4.0 changes applied.
+
+## Branch Goal: Local-First Architecture (v1.5.0)
+
+Migrate from cloud-only (Supabase PostgreSQL) to a **local-first architecture** with optional cloud sync:
+- **Primary database:** PGlite (PostgreSQL in browser/Node) for all direct app interactions
+- **Cloud database:** Supabase PostgreSQL as source of truth for multi-device sync
+- **New installs:** Use local database only until user explicitly connects to cloud
+- **Sync strategy:** Cloud always wins conflicts; local data pushed after pull completes
+- **Authentication:** None required locally (single implicit user); Clerk auth only for cloud sync
+
+### Architecture Diagram
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    App (Next.js + Capacitor)                    │
+│                                                                 │
+│   All reads/writes ──────► PGlite (local)                       │
+│                                                                 │
+│   ┌──────────────┐       Sync Process        ┌───────────────┐  │
+│   │   PGlite     │ ◄─────────────────────►   │   Supabase    │  │
+│   │   (local)    │   (auto when online +     │  (PostgreSQL) │  │
+│   │              │    cloud connected)       │    (cloud)    │  │
+│   └──────────────┘                           └───────────────┘  │
+│                                                                 │
+│   No auth locally              Clerk auth for sync              │
+│   Single implicit user         userId scopes cloud data         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Key Decisions
+| Aspect | Decision |
+|--------|----------|
+| Local database | PGlite (same PostgreSQL schema for local + cloud) |
+| Record identity | UUIDs (enables offline creation without collision) |
+| Sync trigger | Auto-sync on app open + every 5 min (configurable via `NEXT_PUBLIC_SYNC_INTERVAL_MS`) |
+| Sync scope | All data (no partial sync) |
+| Conflict resolution | Cloud always wins |
+| Deletes | Soft delete (`deletedAt` timestamp) |
+| Teller bank sync | Only available when cloud connected |
+| Web deployment | Keep Vercel |
+
+---
+
+## Migration Phases
+
+### Phase 1: Schema Migration to UUIDs ✅ COMPLETE
+**Goal:** Convert all tables from auto-increment integer IDs to UUIDs (required for sync without ID collisions).
+
+**Completed work:**
+- Updated `db/schema.ts` - All 8 tables converted:
+  - `serial('id').primaryKey()` → `uuid('id').primaryKey().defaultRandom()`
+  - All foreign keys changed from `integer` to `uuid` type
+- Updated `types/budget.ts` - All ID types changed from `number` to `string`
+- Updated all API routes - Removed `parseInt()` calls on IDs
+- Updated all components with ID props - Changed from `number` to `string`
+- Created `scripts/migrate-to-uuid.ts` - Migration script for Supabase data
+- Updated `tsconfig.json` - Added "scripts" to exclude array
+- Deleted legacy SQLite migration scripts (check-schema.ts, migrate-add-*.ts, migrate-data.ts)
+
+**Files modified (20+):**
+- `db/schema.ts`, `types/budget.ts`
+- `components/AddTransactionModal.tsx`, `components/BudgetSummary.tsx`, `components/SplitTransactionModal.tsx`
+- All 11 API route files (budget-items, budgets, recurring-payments, transactions, teller, onboarding, auth)
+- `app/page.tsx`, `app/settings/page.tsx`
+
+**⏳ Pending:** Run migration script on Supabase (`npx tsx scripts/migrate-to-uuid.ts`)
+
+---
+
+### Phase 2: Add PGlite Local Database Layer 🔲 PENDING
+**Goal:** Add PGlite as the local database using the same schema as cloud.
+
+**Planned work:**
+- Install `@electric-sql/pglite`
+- Create `db/local.ts` - PGlite connection with IndexedDB persistence
+- Create `db/cloud.ts` - Rename/refactor existing cloud connection
+- Update `db/index.ts` - Export local DB as primary, cloud DB on-demand
+
+**Key benefit:** PGlite is PostgreSQL, so same schema works for both - no type conversion needed.
+
+---
+
+### Phase 3: Implement Local-Only Mode 🔲 PENDING
+**Goal:** App works entirely locally with no authentication required.
+
+**Planned work:**
+- Update `middleware.ts` - Remove route protection
+- Update all 11 API routes - Remove `requireAuth()` checks
+- Update `lib/auth.ts` - Add local vs cloud auth distinction
+- Create `lib/cloudConnection.ts` - Track cloud connection state
+
+---
+
+### Phase 4: Build Sync Engine 🔲 PENDING
+**Goal:** Implement bidirectional sync between local PGlite and cloud Supabase.
+
+**Planned work:**
+- Create `lib/sync/index.ts` - Main sync orchestrator
+- Create `lib/sync/pull.ts` - Cloud → Local sync
+- Create `lib/sync/push.ts` - Local → Cloud sync
+- Create `lib/sync/status.ts` - Sync status tracking
+- Create `lib/sync/autoSync.ts` - Auto-sync triggers
+
+**Sync process:**
+1. Check online status and cloud connection
+2. Authenticate via Clerk
+3. **PULL:** Cloud → Local (cloud wins conflicts)
+4. **PUSH:** Local → Cloud (new local records)
+5. Update sync timestamp
+
+**Sync order (FK dependencies):** budgets → budget_categories → linked_accounts → recurring_payments → budget_items → transactions → split_transactions → user_onboarding
+
+---
+
+### Phase 5: Create Cloud Connect UI 🔲 PENDING
+**Goal:** Settings page UI to connect local app to cloud account.
+
+**Planned work:**
+- Update `app/settings/page.tsx` - Add Cloud Sync section
+- Create `components/CloudConnectButton.tsx`
+- Create `components/CloudStatus.tsx`
+- Create `components/CloudRestoreModal.tsx`
+
+**User flow:**
+1. User visits Settings > "Connect to Cloud"
+2. Clerk sign-in/sign-up
+3. If cloud has data → offer restore
+4. If no cloud data → offer upload
+5. Enable auto-sync
+
+---
+
+### Phase 6: Configure Capacitor Static Build 🔲 PENDING
+**Goal:** Switch Capacitor from live server mode to static export with bundled PGlite.
+
+**Planned work:**
+- Update `next.config.ts` - Enable static export (`output: 'export'`)
+- Update `capacitor.config.ts` - Point to `out/` directory
+- Restructure API routes → client-side functions in `lib/`
+- Update build scripts for mobile
+
+---
+
+## Environment Variables (Local-First)
+
+```env
+# Existing
+DATABASE_URL=postgresql://...  # Cloud DB for sync
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+
+# New for local-first
+NEXT_PUBLIC_SYNC_INTERVAL_MS=300000  # 5 minutes default
+```
+
+---
+
+## Reference
+
+Full migration plan: [LOCAL_FIRST_MIGRATION_PLAN.md](LOCAL_FIRST_MIGRATION_PLAN.md)

@@ -107,7 +107,7 @@ export async function DELETE(request: NextRequest) {
     const [account] = await db
       .select()
       .from(linkedAccounts)
-      .where(and(eq(linkedAccounts.id, parseInt(id)), eq(linkedAccounts.userId, userId)))
+      .where(and(eq(linkedAccounts.id, id), eq(linkedAccounts.userId, userId)))
       .limit(1);
 
     if (!account) {
@@ -124,7 +124,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Delete from database
-    await db.delete(linkedAccounts).where(eq(linkedAccounts.id, parseInt(id)));
+    await db.delete(linkedAccounts).where(eq(linkedAccounts.id, id));
 
     return NextResponse.json({ success: true });
   } catch (error) {

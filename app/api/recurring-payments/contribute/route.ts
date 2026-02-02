@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
 
   // Get current payment and verify ownership
   const payment = await db.query.recurringPayments.findFirst({
-    where: and(eq(recurringPayments.id, parseInt(id)), eq(recurringPayments.userId, userId)),
+    where: and(eq(recurringPayments.id, id), eq(recurringPayments.userId, userId)),
   });
 
   if (!payment) {
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
       fundedAmount: String(newFundedAmount),
       updatedAt: new Date(),
     })
-    .where(eq(recurringPayments.id, parseInt(id)))
+    .where(eq(recurringPayments.id, id))
     .returning();
 
   return NextResponse.json({

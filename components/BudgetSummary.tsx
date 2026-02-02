@@ -34,7 +34,7 @@ interface BudgetSummaryProps {
 }
 
 interface UncategorizedTransaction {
-  id: number;
+  id: string;
   date: string;
   description: string;
   amount: number;
@@ -45,7 +45,7 @@ interface UncategorizedTransaction {
 }
 
 interface LinkedAccount {
-  id: number;
+  id: string;
   accountName: string;
   institutionName: string;
   lastFour: string;
@@ -77,7 +77,7 @@ export default function BudgetSummary({
   );
   const [isLoadingUncategorized, setIsLoadingUncategorized] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [assigningId, setAssigningId] = useState<number | null>(null);
+  const [assigningId, setAssigningId] = useState<string | null>(null);
   const [selectedBudgetItemId, setSelectedBudgetItemId] = useState<string>("");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>([]);
@@ -145,7 +145,7 @@ export default function BudgetSummary({
 
         // Set up the transaction to split
         setTransactionToSplit({
-          id: parseInt(parentTxn.id),
+          id: parentTxn.id,
           date: parentTxn.date,
           description: parentTxn.description,
           amount: parentTxn.amount,
@@ -298,7 +298,7 @@ export default function BudgetSummary({
     }
   };
 
-  const handleAssign = async (transactionId: number) => {
+  const handleAssign = async (transactionId: string) => {
     if (!selectedBudgetItemId) return;
 
     try {
@@ -324,7 +324,7 @@ export default function BudgetSummary({
     }
   };
 
-  const handleDeleteUncategorized = async (transactionId: number) => {
+  const handleDeleteUncategorized = async (transactionId: string) => {
     if (!confirm("Delete this transaction?")) return;
 
     try {
@@ -349,7 +349,7 @@ export default function BudgetSummary({
     }
   };
 
-  const handleRestoreTransaction = async (transactionId: number) => {
+  const handleRestoreTransaction = async (transactionId: string) => {
     try {
       const response = await fetch("/api/transactions", {
         method: "PATCH",
@@ -371,7 +371,7 @@ export default function BudgetSummary({
     }
   };
 
-  const handlePermanentDelete = async (transactionId: number) => {
+  const handlePermanentDelete = async (transactionId: string) => {
     if (!confirm("Permanently delete this transaction? This cannot be undone."))
       return;
 
@@ -397,7 +397,7 @@ export default function BudgetSummary({
 
   const handleAddTransaction = async (transaction: {
     budgetItemId: string;
-    linkedAccountId?: number;
+    linkedAccountId?: string;
     date: string;
     description: string;
     amount: number;
@@ -420,9 +420,9 @@ export default function BudgetSummary({
   };
 
   const handleEditTransaction = async (transaction: {
-    id: number;
+    id: string;
     budgetItemId: string;
-    linkedAccountId?: number;
+    linkedAccountId?: string;
     date: string;
     description: string;
     amount: number;
@@ -445,7 +445,7 @@ export default function BudgetSummary({
     }
   };
 
-  const handleDeleteFromModal = async (id: number) => {
+  const handleDeleteFromModal = async (id: string) => {
     try {
       const response = await fetch(`/api/transactions?id=${id}`, {
         method: "DELETE",
@@ -467,10 +467,8 @@ export default function BudgetSummary({
       onTransactionClick(transaction);
     } else {
       setTransactionToEdit({
-        id: parseInt(transaction.id),
-        budgetItemId: transaction.budgetItemId
-          ? parseInt(transaction.budgetItemId)
-          : null,
+        id: transaction.id,
+        budgetItemId: transaction.budgetItemId || null,
         linkedAccountId: transaction.linkedAccountId,
         date: transaction.date,
         description: transaction.description,
@@ -500,7 +498,7 @@ export default function BudgetSummary({
   };
 
   const handleSplitTransaction = async (
-    splits: { budgetItemId: number; amount: number; description?: string }[],
+    splits: { budgetItemId: string; amount: number; description?: string }[],
   ) => {
     if (!transactionToSplit) return;
 
@@ -726,7 +724,7 @@ export default function BudgetSummary({
           isOpen={isSplitModalOpen}
           onClose={closeSplitModal}
           onSplit={handleSplitTransaction}
-          transactionId={transactionToSplit?.id || 0}
+          transactionId={transactionToSplit?.id || ''}
           transactionAmount={transactionToSplit?.amount || 0}
           transactionDescription={
             transactionToSplit?.merchant ||
@@ -1332,7 +1330,7 @@ export default function BudgetSummary({
         isOpen={isSplitModalOpen}
         onClose={closeSplitModal}
         onSplit={handleSplitTransaction}
-        transactionId={transactionToSplit?.id || 0}
+        transactionId={transactionToSplit?.id || ''}
         transactionAmount={transactionToSplit?.amount || 0}
         transactionDescription={
           transactionToSplit?.merchant || transactionToSplit?.description || ""
