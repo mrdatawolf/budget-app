@@ -137,11 +137,14 @@ export default function MonthlyReportModal({ isOpen, onClose, budget }: MonthlyR
     });
   });
 
-  // Income variance (actual income vs planned income)
-  const incomeVariance = totalIncome - totalPlannedIncome;
+  // Left to budget = unallocated money (buffer + income - all planned expenses including saving)
+  const allPlannedExpenses = Object.entries(budget.categories)
+    .filter(([key]) => key !== 'income')
+    .reduce((sum, [, category]) => sum + category.items.reduce((s, item) => s + item.planned, 0), 0);
+  const leftToBudget = Math.max(0, buffer + totalPlannedIncome - allPlannedExpenses);
 
-  // Theoretical next month buffer = current buffer + underspent - overspent + income variance
-  const theoreticalNextBuffer = buffer + totalUnderspent - totalOverspent + incomeVariance;
+  // Projected next buffer = underspent - overspent + left to budget
+  const theoreticalNextBuffer = totalUnderspent - totalOverspent + leftToBudget;
 
   // Category summaries
   const categorySummaries: CategorySummary[] = Object.entries(budget.categories)
@@ -154,7 +157,7 @@ export default function MonthlyReportModal({ isOpen, onClose, budget }: MonthlyR
 
       return {
         name: category.name,
-        emoji: categoryEmojis[category.name] || '📋',
+        emoji: category.emoji || categoryEmojis[category.name] || '📋',
         planned,
         actual,
         difference,
@@ -289,12 +292,6 @@ export default function MonthlyReportModal({ isOpen, onClose, budget }: MonthlyR
             <h3 className="text-lg font-semibold text-text-primary mb-4">Buffer Flow</h3>
             <div className="bg-gradient-to-br from-surface-secondary to-surface-secondary rounded-lg p-5 border border-border">
               <div className="space-y-3">
-                {/* Current Buffer */}
-                <div className="flex justify-between items-center">
-                  <span className="text-text-secondary">Current Buffer</span>
-                  <span className="font-semibold text-text-primary">${formatCurrency(buffer)}</span>
-                </div>
-
                 {/* Underspent */}
                 <div className="flex justify-between items-center">
                   <span className="text-text-secondary">+ Underspent</span>
@@ -306,6 +303,14 @@ export default function MonthlyReportModal({ isOpen, onClose, budget }: MonthlyR
                   <span className="text-text-secondary">- Overspent</span>
                   <span className="font-semibold text-danger">-${formatCurrency(totalOverspent)}</span>
                 </div>
+
+                {/* Left to Budget */}
+                {leftToBudget > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-text-secondary">+ Left to Budget</span>
+                    <span className="font-semibold text-success">+${formatCurrency(leftToBudget)}</span>
+                  </div>
+                )}
 
                 {/* Divider */}
                 <div className="border-t border-border-strong my-2"></div>

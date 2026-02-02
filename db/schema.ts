@@ -14,8 +14,10 @@ export const budgets = pgTable('budgets', {
 export const budgetCategories = pgTable('budget_categories', {
   id: uuid('id').primaryKey().defaultRandom(),
   budgetId: uuid('budget_id').notNull().references(() => budgets.id, { onDelete: 'cascade' }),
-  categoryType: text('category_type').notNull(), // 'income', 'giving', etc.
+  categoryType: text('category_type').notNull(), // 'income', 'giving', etc. or custom slug
   name: text('name').notNull(),
+  emoji: text('emoji'), // Custom emoji for user-created categories (null for defaults)
+  categoryOrder: integer('category_order').notNull().default(0),
 });
 
 export const budgetItems = pgTable('budget_items', {

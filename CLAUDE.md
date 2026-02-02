@@ -6,8 +6,8 @@ This document contains context for Claude AI to continue development on this bud
 
 A zero-based budget tracking application built with Next.js, TypeScript, and Tailwind CSS. The app features bank account integration via Teller API for automatic transaction imports.
 
-**Current Version:** v1.4.0
-**Last Session:** 2026-01-29
+**Current Version:** v1.7.0
+**Last Session:** 2026-01-31
 
 ## Tech Stack
 
@@ -19,6 +19,7 @@ A zero-based budget tracking application built with Next.js, TypeScript, and Tai
 - **Authentication:** Clerk (@clerk/nextjs)
 - **Bank Integration:** Teller API
 - **Mobile:** Capacitor (live server mode)
+- **Charts:** D3.js + d3-sankey
 - **Icons:** react-icons (FaXxx from react-icons/fa only)
 
 ## Key Concepts
@@ -282,19 +283,24 @@ const emojiMap: Record<string, string> = {
 - **Multi-user support** - each user sees only their own data
 - **Interactive onboarding** - 6-step guided setup for new users
 - Full budget CRUD with categories and items
+- **Custom budget categories** — user-created categories with name + emoji, deletable, carry over on copy
 - Transaction management (add, edit, soft delete, restore)
 - Split transactions across multiple budget items
 - **Edit existing splits** by clicking split transactions (from Item Detail, Tracked tab, or BudgetSection dropdown)
 - Bank integration via Teller
 - Recurring payments with linking to budget items
+- **Recurring payment auto-reset** — due dates auto-advance and funded amounts reset when period passes
 - Budget item detail view in sidebar
-- Monthly report with Buffer Flow and empty-state handling
-- Copy budget from previous month
+- Monthly report with Buffer Flow (including "Left to Budget") and empty-state handling
+- Copy budget from previous month (including custom categories)
+- **Insights charts** — Budget vs Actual (bar), Spending Trends (line), Cash Flow (Sankey)
+- **Accounts grouped by institution** on settings page
 
 ### Potential Future Work
-- The "Add Group" button at bottom of budget page is non-functional (placeholder)
 - Could add ability to edit recurring payment from budget item detail view
-- Could add recurring payment auto-advance when marked as paid
+- Cross-chart filtering (click category to filter all charts)
+- Export charts as PNG/SVG
+- Custom date range selector for trends (6 months, 1 year)
 
 ## Development Commands
 
@@ -497,20 +503,166 @@ DATABASE_URL=postgresql://postgres.xxx:password@aws-0-us-east-1.pooler.supabase.
 # Supabase client not used directly (queries go through Drizzle ORM)
 ```
 
+## Recent Changes (v1.5.0)
+
+### Interactive Insights Charts
+- **Dependencies:** Added `d3`, `d3-sankey`, `@types/d3`, `@types/d3-sankey`
+- **Chart infrastructure:**
+  - `lib/chartColors.ts` — category color mapping (`getCategoryColor`, `getCategoryLightColor`, `getCategoryEmoji`)
+  - `lib/chartHelpers.ts` — data transformation utilities for all 3 chart types
+  - `types/chart.ts` — TypeScript interfaces (`CategoryChartData`, `MonthlyTrendData`, `FlowNode`, `FlowLink`, `FlowData`, `TooltipData`)
+  - `components/charts/ChartTooltip.tsx` — shared fixed-position tooltip
+  - `components/charts/ChartEmptyState.tsx` — shared empty state with icon/title/message/action
+
+### Budget vs Actual Chart (`components/charts/BudgetVsActualChart.tsx`)
+- Horizontal grouped bar chart: planned (gray) vs actual (category color)
+- Over-budget bars turn red with glow shadow
+- Hover tooltips show exact amounts and over/under difference
+- Uses `d3.scaleBand()` + `d3.scaleLinear()`
+
+### Spending Trends Chart (`components/charts/SpendingTrendsChart.tsx`)
+- Multi-line chart with one line per expense category
+- Interactive legend: click category to toggle visibility (`visibleCategories` Set)
+- Smooth curves via `d3.curveMonotoneX`
+- Dot markers on data points with hover tooltips
+- Requires 2+ months of data (shows empty state otherwise)
+
+### Cash Flow Diagram (`components/charts/FlowDiagram.tsx`)
+- 3-column Sankey: Sources → Categories → Budget Items
+- Sources: Buffer (gray) and Income (emerald), shown when they have values
+- Gradient-colored links from source color to category color
+- Node hover highlights connected links, dims others to 0.15 opacity
+- Detailed tooltips show constituent line items on source/category nodes
+- Column headers: SOURCES / CATEGORIES / BUDGET ITEMS
+- Amount labels on bars tall enough to fit text
+- Uses `d3-sankey` with `.nodeId()` for string-based node identification
+
+### Insights Page (`app/insights/page.tsx`)
+- Multi-month data fetching: loads current + 2 previous months of budgets
+- `budgets` array (oldest→newest) for trends, `currentBudget` for bar/flow charts
+- Refresh button with loading spinner
+- Max width increased from `max-w-4xl` to `max-w-6xl`
+- Replaced "Coming Soon" placeholder cards with live charts
+
+### Data Transformation Details (`lib/chartHelpers.ts`)
+- `transformBudgetToCategoryData(budget)` — aggregates planned/actual per category
+- `transformBudgetsToTrendData(budgets)` — time series with month/year/date per budget
+- `transformBudgetToFlowData(budget)` — 3-column Sankey data:
+  - Distributes income proportionally across expense categories
+  - Includes `lineItems` on source and category nodes for hover detail
+  - Returns empty data when no income or no expenses
+- `hasTransactionData(budget)` — checks if any category has actual spending
+- `hasIncomeAndExpenses(budget)` — checks for both income and expenses (flow diagram requirement)
+
+### D3 + React Integration Pattern
+- React controls: component lifecycle, DOM structure, state (tooltips, legend)
+- D3 handles: scales, axes, paths, layout calculations
+- `useRef` for SVG elements, `useEffect` for D3 rendering, `useMemo` for data transforms
+- Responsive via `viewBox` + `preserveAspectRatio="xMidYMid meet"`
+
+## Recent Changes (v1.7.0)
+
+### Custom Budget Categories
+- **"Add Group" button** now functional — opens modal with name input and searchable emoji picker (130+ emojis in 12 groups)
+- `CategoryType` changed from fixed union to `string`; `Budget.categories` is now `Record<string, BudgetCategory>`
+- Custom categories rendered dynamically: income first → defaults → custom → saving last
+- Custom categories show delete button on hover (cascade deletes items + transactions)
+- Custom categories carry over via "Copy from previous month" (not auto-created in new months)
+- DB schema: added `emoji` (text, nullable) and `categoryOrder` (integer) columns to `budget_categories`
+- New API: `POST /api/budget-categories` (create), `DELETE /api/budget-categories?id=X` (delete)
+- Chart helpers/colors updated to support dynamic categories with hash-based color assignment
+
+### Recurring Payment Auto-Reset
+- In `budgets/route.ts` GET handler: checks each active recurring payment's `nextDueDate`
+- If due date has passed, advances it by one frequency period (loops until future date)
+- Resets `fundedAmount` to `'0'` so progress bar starts fresh
+- Monthly payments already had dynamic funded amount (from current month transactions), but DB value now stays consistent
+
+### Buffer Flow: Left to Budget
+- `MonthlyReportModal.tsx` — added "Left to Budget" row: `max(0, buffer + totalPlannedIncome - allPlannedExpenses)`
+- Projected buffer formula: `Underspent - Overspent + Left to Budget`
+
+### Accounts Grouped by Institution
+- `settings/page.tsx` — linked bank accounts grouped by institution name using `reduce`
+
+### Key Files Modified
+- `db/schema.ts` — emoji + categoryOrder columns
+- `types/budget.ts` — CategoryType → string, Budget.categories → Record, DefaultCategoryType union, DEFAULT_CATEGORIES array
+- `types/chart.ts` — string keys instead of CategoryType import
+- `lib/budgetHelpers.ts` — dynamic category initialization from DB data
+- `lib/chartColors.ts` — DefaultCategoryType, custom color palette, hash-based color index
+- `lib/chartHelpers.ts` — dynamic category key derivation
+- `app/api/budget-categories/route.ts` — NEW (POST/DELETE)
+- `app/api/budgets/route.ts` — recurring auto-reset logic
+- `app/api/budgets/copy/route.ts` — custom category creation in target
+- `app/page.tsx` — dynamic category rendering, Add Group modal, emoji picker
+- `app/settings/page.tsx` — institution grouping
+- `components/BudgetSection.tsx` — stored emoji support
+- `components/MonthlyReportModal.tsx` — Left to Budget + stored emoji
+- `components/charts/SpendingTrendsChart.tsx` — dynamic category keys
+
+## Recent Changes (v1.6.0)
+
+### Tablet Responsiveness & Mobile Block Screen
+- **Mobile block screen** (`components/MobileBlockScreen.tsx`) — full-screen overlay on screens < 768px telling users to use a tablet or larger device
+- **DashboardLayout** — added `MobileBlockScreen`, main layout uses `hidden md:flex` (hidden < 768px)
+- **Sidebar auto-collapse** — defaults to collapsed on screens < 1024px via `window.matchMedia` listener
+- **Summary sidebar toggle drawer** — on tablet (md–lg), right sidebar is a floating drawer toggled by a FAB button; on lg+ it's always visible
+- **Responsive padding** — insights, recurring, settings pages use `p-4 lg:p-8`
+
+### Month/Year Selection Persistence
+- Selected month/year persists across page navigations via URL search params
+- Sidebar navigation links include current `?month=X&year=Y` query params
+
+### Transaction Categorization Suggestions
+- Merchant-based suggestion badges on uncategorized transactions
+- Backend: `GET /api/teller/sync` returns `suggestedBudgetItemId` based on most frequent historical merchant→budgetItem pairing
+- Frontend: clickable badge on each transaction for one-tap categorization
+
+### Transaction Display Improvements
+- Show all transactions regardless of date, grouped by month
+- Transactions limited to ±7 days of current budget month boundaries
+- Uncategorized count updates to match filtered transactions
+
+### Monthly Report Buffer Fix
+- Removed `incomeVariance` from buffer projection (planned income is adjusted on the fly)
+- Removed "Current Buffer" row from Buffer Flow UI — projection is now simply `underspent - overspent`
+
+### Split Transaction Actual Calculation Fix
+- Fixed `budgetHelpers.ts` to correctly calculate split transaction actuals by checking `parentTransaction.type`
+- Income splits reduce expense category actuals; expense splits increase them
+
+### Vercel Deployment Fix
+- Excluded `scripts/` directory from `tsconfig.json` to prevent build failure from old SQLite migration scripts importing `better-sqlite3`
+
+### New Files
+- `components/MobileBlockScreen.tsx` — mobile block screen component
+
+### Key File Changes
+- `components/DashboardLayout.tsx` — MobileBlockScreen + hidden md:flex
+- `components/Sidebar.tsx` — auto-collapse on tablet via matchMedia
+- `app/page.tsx` — summary sidebar toggle drawer for tablet
+- `app/insights/page.tsx` — responsive padding
+- `app/recurring/page.tsx` — responsive padding
+- `app/settings/page.tsx` — responsive padding
+- `components/MonthlyReportModal.tsx` — simplified buffer projection formula
+- `lib/budgetHelpers.ts` — split transaction actual calculation fix
+- `app/api/teller/sync/route.ts` — merchant-based suggestions
+- `tsconfig.json` — exclude scripts directory
+
 ## Session Handoff Notes
 
 Last session ended after:
-1. Completed Supabase migration (Phases 1-4)
-2. Skipped Phase 5 (Edge Functions) — documented rationale above
-3. Set up Capacitor live server mode (Phase 6)
-4. Fixed all PostgreSQL numeric type issues across 10+ files
-5. Optimized Teller sync from ~60s to fast batch queries
-6. Fixed Monthly Report excluding Saving from expenses
-7. Fixed split transaction `.toFixed()` error
-8. Added previous month transactions feature (last 3 days)
-9. Build verified passing
+1. Implemented custom budget categories (Add Group button, emoji picker, dynamic rendering, API, chart support)
+2. Added "Left to Budget" to Monthly Report buffer flow projection
+3. Grouped linked bank accounts by institution on settings page
+4. Expanded emoji picker from 30 to 130+ emojis in 12 searchable groups
+5. Added recurring payment auto-reset (auto-advance nextDueDate + reset fundedAmount when period passes)
+6. Updated types: CategoryType → string, Budget.categories → Record<string, BudgetCategory>
+7. DB schema updated: added emoji and categoryOrder columns to budget_categories (pushed to Supabase)
+8. Build verified passing
 
-The app is in a stable state with v1.4.0 changes applied.
+The app is in a stable state with v1.7.0 changes applied. Schema has been pushed to Supabase (`db:push`).
 
 ## Branch Goal: Local-First Architecture (v1.5.0)
 
@@ -670,3 +822,4 @@ NEXT_PUBLIC_SYNC_INTERVAL_MS=300000  # 5 minutes default
 ## Reference
 
 Full migration plan: [LOCAL_FIRST_MIGRATION_PLAN.md](LOCAL_FIRST_MIGRATION_PLAN.md)
+

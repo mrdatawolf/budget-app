@@ -40,10 +40,12 @@ export interface BudgetCategory {
   id: string;
   dbId?: string | null;
   name: string;
+  emoji?: string | null;
   items: BudgetItem[];
 }
 
-export type CategoryType =
+// Default category keys — custom categories use slugified names
+export type DefaultCategoryType =
   | 'income'
   | 'giving'
   | 'household'
@@ -53,21 +55,19 @@ export type CategoryType =
   | 'insurance'
   | 'saving';
 
+// CategoryType is now a string to support custom categories
+export type CategoryType = string;
+
+export const DEFAULT_CATEGORIES: DefaultCategoryType[] = [
+  'income', 'giving', 'household', 'transportation', 'food', 'personal', 'insurance', 'saving',
+];
+
 export interface Budget {
   id?: string;
   month: number;
   year: number;
   buffer: number;
-  categories: {
-    income: BudgetCategory;
-    giving: BudgetCategory;
-    household: BudgetCategory;
-    transportation: BudgetCategory;
-    food: BudgetCategory;
-    personal: BudgetCategory;
-    insurance: BudgetCategory;
-    saving: BudgetCategory;
-  };
+  categories: Record<string, BudgetCategory>;
 }
 
 export type RecurringFrequency = 'monthly' | 'quarterly' | 'semi-annually' | 'annually';

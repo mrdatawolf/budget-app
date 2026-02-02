@@ -2,6 +2,69 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.0] - 2026-01-31 - Custom Categories, Recurring Auto-Reset & UI Improvements
+
+### Added
+- **Custom budget categories** — "Add Group" button creates user-defined categories with name and emoji
+  - Slugified category keys for DB storage
+  - Hash-based color assignment for charts
+  - Delete custom categories (cascade deletes items and transactions)
+  - Custom categories carry over via "Copy from previous month"
+- **Expanded emoji picker** — 130+ emojis organized in 12 searchable groups (Finance, Home, Transport, Food, Health, Education, Kids & Pets, Fun, Giving, Travel, Work, Nature)
+- **Recurring payment auto-reset** — when `nextDueDate` passes, automatically advances to next period and resets `fundedAmount` to 0
+  - Handles multiple missed periods (e.g., app not opened for 3 months)
+  - Runs on budget GET endpoint (when any month loads)
+- **"Left to Budget" in Buffer Flow** — Monthly Report projected buffer now includes unallocated money: `Projected = Underspent - Overspent + Left to Budget`
+- **Accounts grouped by institution** — Settings page groups linked bank accounts under their institution name
+- **Budget category API** (`/api/budget-categories`) — POST to create, DELETE to remove custom categories
+
+### Changed
+- `CategoryType` changed from fixed 8-value union to `string` to support custom categories
+- `Budget.categories` changed from fixed object shape to `Record<string, BudgetCategory>`
+- Budget page renders categories dynamically (income first, defaults, custom, saving last)
+- Chart helpers derive category keys dynamically from budget data instead of hardcoded arrays
+- Chart colors use `DefaultCategoryType` for built-in categories, hash-based palette for custom
+- `getCategoryEmoji()` now accepts stored emoji from DB, falling back to defaults
+- DB schema: added `emoji` (text, nullable) and `categoryOrder` (integer) columns to `budget_categories`
+
+### Fixed
+- Copy budget now creates custom categories in target budget when they don't exist
+
+## [1.6.0] - 2026-01-31 - Tablet Responsiveness & Deployment Prep
+
+### Added
+- **Mobile block screen** — full-screen overlay on screens < 768px with message to use a tablet or larger device
+- **Sidebar auto-collapse** — sidebar defaults to collapsed on screens < 1024px with `matchMedia` resize listener
+- **Summary sidebar toggle drawer** — floating action button on tablet (768–1024px) to open/close the summary sidebar as an overlay drawer
+- **Transaction categorization suggestions** — merchant-based suggestion badges on uncategorized transactions using historical categorization data
+- **Month/year persistence** — selected month/year carries across page navigations via URL search params
+
+### Changed
+- Responsive padding on insights, recurring, and settings pages (`p-4 lg:p-8`)
+- DashboardLayout hides main content below 768px, shows MobileBlockScreen instead
+- Transaction list shows all transactions grouped by month, limited to ±7 days of budget month boundaries
+- Uncategorized transaction count matches filtered results
+
+### Fixed
+- **Buffer projection formula** — removed income variance (planned income adjusted on the fly) and removed current buffer double-counting; projection is now `underspent - overspent`
+- **Split transaction actuals** — `budgetHelpers.ts` now checks `parentTransaction.type` to correctly handle income vs expense splits
+- **Vercel build error** — excluded `scripts/` from `tsconfig.json` to prevent `better-sqlite3` import errors from old migration scripts
+
+## [1.5.0] - 2026-01-30 - Interactive Insights Charts
+
+### Added
+- **D3.js charts** on Insights page — three interactive visualizations powered by D3.js and d3-sankey
+- **Budget vs Actual** — horizontal grouped bar chart comparing planned vs actual spending per category, with over-budget highlighting in red
+- **Spending Trends** — multi-line chart tracking spending by category over the last 3 months, with clickable legend to toggle category visibility
+- **Cash Flow (Sankey)** — 3-column flow diagram: Sources (Buffer, Income) → Categories → Individual Budget Items, with gradient-colored flows and detailed hover tooltips
+- **Chart infrastructure** — shared tooltip component, empty state component, category color mapping, and data transformation utilities
+- **Multi-month data fetching** — insights page loads current + 2 previous months for trend analysis
+
+### Changed
+- Insights page max width increased from `max-w-4xl` to `max-w-6xl`
+- Replaced "Coming Soon" placeholder cards with live interactive charts
+- Added refresh button with loading spinner to insights page
+
 ## [1.4.0] - 2026-01-29 - Supabase Migration & Mobile Prep
 
 ### Added
