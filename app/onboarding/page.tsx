@@ -38,7 +38,7 @@ const emojiMap: Record<string, string> = {
 export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [budgetId, setBudgetId] = useState<number | null>(null);
+  const [budgetId, setBudgetId] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryInfo[]>([]);
   const [createdItems, setCreatedItems] = useState<CreatedItem[]>([]);
   const [bufferAmount, setBufferAmount] = useState(0);

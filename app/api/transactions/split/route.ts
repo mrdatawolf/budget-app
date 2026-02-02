@@ -5,13 +5,13 @@ import { eq, and } from 'drizzle-orm';
 import { requireAuth, isAuthError } from '@/lib/auth';
 
 interface SplitItem {
-  budgetItemId: number;
+  budgetItemId: string;
   amount: number;
   description?: string;
 }
 
 // Helper to verify transaction ownership (via budgetItem, linkedAccount, or split transactions)
-async function verifyTransactionOwnership(transactionId: number, userId: string): Promise<boolean> {
+async function verifyTransactionOwnership(transactionId: string, userId: string): Promise<boolean> {
   const txn = await db.query.transactions.findFirst({
     where: eq(transactions.id, transactionId),
     with: {
@@ -55,7 +55,7 @@ async function verifyTransactionOwnership(transactionId: number, userId: string)
 }
 
 // Helper to verify budget item ownership
-async function verifyBudgetItemOwnership(budgetItemId: number, userId: string): Promise<boolean> {
+async function verifyBudgetItemOwnership(budgetItemId: string, userId: string): Promise<boolean> {
   const item = await db.query.budgetItems.findFirst({
     where: eq(budgetItems.id, budgetItemId),
     with: {
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     const { userId } = authResult;
 
     const body = await request.json();
-    const { transactionId, splits } = body as { transactionId: number; splits: SplitItem[] };
+    const { transactionId, splits } = body as { transactionId: string; splits: SplitItem[] };
 
     if (!transactionId || !splits || !Array.isArray(splits) || splits.length === 0) {
       return NextResponse.json({ error: 'Missing transactionId or splits' }, { status: 400 });
@@ -164,14 +164,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Verify transaction ownership
-    if (!(await verifyTransactionOwnership(parseInt(transactionId), userId))) {
+    if (!(await verifyTransactionOwnership(transactionId, userId))) {
       return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
     }
 
     const splits = await db
       .select()
       .from(splitTransactions)
-      .where(eq(splitTransactions.parentTransactionId, parseInt(transactionId)));
+      .where(eq(splitTransactions.parentTransactionId, transactionId));
 
     return NextResponse.json(splits);
   } catch (error) {
@@ -196,26 +196,26 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Verify transaction ownership
-    if (!(await verifyTransactionOwnership(parseInt(transactionId), userId))) {
+    if (!(await verifyTransactionOwnership(transactionId, userId))) {
       return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
     }
 
     // If budgetItemId provided, verify ownership
-    if (budgetItemId && !(await verifyBudgetItemOwnership(parseInt(budgetItemId), userId))) {
+    if (budgetItemId && !(await verifyBudgetItemOwnership(budgetItemId, userId))) {
       return NextResponse.json({ error: 'Budget item not found' }, { status: 404 });
     }
 
     // Delete all splits
     await db
       .delete(splitTransactions)
-      .where(eq(splitTransactions.parentTransactionId, parseInt(transactionId)));
+      .where(eq(splitTransactions.parentTransactionId, transactionId));
 
     // If budgetItemId provided, assign transaction to that item
     if (budgetItemId) {
       await db
         .update(transactions)
-        .set({ budgetItemId: parseInt(budgetItemId) })
-        .where(eq(transactions.id, parseInt(transactionId)));
+        .set({ budgetItemId: budgetItemId })
+        .where(eq(transactions.id, transactionId));
     }
 
     return NextResponse.json({ success: true });

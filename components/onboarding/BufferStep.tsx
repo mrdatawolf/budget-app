@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { formatCurrency } from '@/lib/formatCurrency';
 
 interface BufferStepProps {
-  budgetId: number | null;
+  budgetId: string | null;
   onNext: () => void;
   onBack: () => void;
 }

@@ -19,7 +19,7 @@ export async function PUT(request: NextRequest) {
   // Verify ownership for all items before updating
   for (const item of items) {
     const existingItem = await db.query.budgetItems.findFirst({
-      where: eq(budgetItems.id, parseInt(item.id)),
+      where: eq(budgetItems.id, item.id),
       with: {
         category: {
           with: { budget: true },
@@ -37,7 +37,7 @@ export async function PUT(request: NextRequest) {
     await db
       .update(budgetItems)
       .set({ order: item.order })
-      .where(eq(budgetItems.id, parseInt(item.id)));
+      .where(eq(budgetItems.id, item.id));
   }
 
   return NextResponse.json({ success: true });

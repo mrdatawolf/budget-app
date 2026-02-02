@@ -52,7 +52,7 @@ export default function TransactionStep({ createdItems, onNext, onBack }: Transa
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          budgetItemId: parseInt(budgetItemId),
+          budgetItemId,
           date,
           description: description.trim(),
           amount: numAmount,

@@ -1,8 +1,8 @@
-import { pgTable, serial, text, integer, numeric, boolean, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, numeric, boolean, timestamp } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const budgets = pgTable('budgets', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   userId: text('user_id').notNull().default(''), // Clerk user ID
   month: integer('month').notNull(),
   year: integer('year').notNull(),
@@ -12,28 +12,28 @@ export const budgets = pgTable('budgets', {
 });
 
 export const budgetCategories = pgTable('budget_categories', {
-  id: serial('id').primaryKey(),
-  budgetId: integer('budget_id').notNull().references(() => budgets.id, { onDelete: 'cascade' }),
-  categoryType: text('category_type').notNull(), // 'income', 'giving', etc. or custom slug
+  id: uuid('id').primaryKey().defaultRandom(),
+  budgetId: uuid('budget_id').notNull().references(() => budgets.id, { onDelete: 'cascade' }),
+  categoryType: text('category_type').notNull(), // 'income', 'giving', etc.
   name: text('name').notNull(),
   emoji: text('emoji'), // Custom emoji for user-created categories (null for defaults)
   categoryOrder: integer('category_order').notNull().default(0),
 });
 
 export const budgetItems = pgTable('budget_items', {
-  id: serial('id').primaryKey(),
-  categoryId: integer('category_id').notNull().references(() => budgetCategories.id, { onDelete: 'cascade' }),
+  id: uuid('id').primaryKey().defaultRandom(),
+  categoryId: uuid('category_id').notNull().references(() => budgetCategories.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   planned: numeric('planned', { precision: 10, scale: 2 }).notNull().default('0'),
   order: integer('order').notNull().default(0),
-  recurringPaymentId: integer('recurring_payment_id'), // Links to recurring_payments table
+  recurringPaymentId: uuid('recurring_payment_id'), // Links to recurring_payments table
   createdAt: timestamp('created_at', { withTimezone: true }).$defaultFn(() => new Date()),
 });
 
 export const transactions = pgTable('transactions', {
-  id: serial('id').primaryKey(),
-  budgetItemId: integer('budget_item_id').references(() => budgetItems.id, { onDelete: 'set null' }),
-  linkedAccountId: integer('linked_account_id').references(() => linkedAccounts.id),
+  id: uuid('id').primaryKey().defaultRandom(),
+  budgetItemId: uuid('budget_item_id').references(() => budgetItems.id, { onDelete: 'set null' }),
+  linkedAccountId: uuid('linked_account_id').references(() => linkedAccounts.id),
   date: text('date').notNull(),
   description: text('description').notNull(),
   amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
@@ -51,9 +51,9 @@ export const transactions = pgTable('transactions', {
 
 // Split transactions - child allocations of a parent transaction
 export const splitTransactions = pgTable('split_transactions', {
-  id: serial('id').primaryKey(),
-  parentTransactionId: integer('parent_transaction_id').notNull().references(() => transactions.id, { onDelete: 'cascade' }),
-  budgetItemId: integer('budget_item_id').notNull().references(() => budgetItems.id, { onDelete: 'cascade' }),
+  id: uuid('id').primaryKey().defaultRandom(),
+  parentTransactionId: uuid('parent_transaction_id').notNull().references(() => transactions.id, { onDelete: 'cascade' }),
+  budgetItemId: uuid('budget_item_id').notNull().references(() => budgetItems.id, { onDelete: 'cascade' }),
   amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
   description: text('description'), // Optional context like "household items"
   createdAt: timestamp('created_at', { withTimezone: true }).$defaultFn(() => new Date()),
@@ -61,7 +61,7 @@ export const splitTransactions = pgTable('split_transactions', {
 
 // Linked bank accounts from Teller
 export const linkedAccounts = pgTable('linked_accounts', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   userId: text('user_id').notNull().default(''), // Clerk user ID
   tellerAccountId: text('teller_account_id').notNull().unique(),
   tellerEnrollmentId: text('teller_enrollment_id').notNull(),
@@ -128,7 +128,7 @@ export const linkedAccountsRelations = relations(linkedAccounts, ({ many }) => (
 
 // User onboarding tracking
 export const userOnboarding = pgTable('user_onboarding', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   userId: text('user_id').notNull().unique(),
   currentStep: integer('current_step').notNull().default(1),
   completedAt: timestamp('completed_at', { withTimezone: true }),
@@ -140,7 +140,7 @@ export const userOnboardingRelations = relations(userOnboarding, () => ({}));
 
 // Recurring payments for subscriptions and memberships
 export const recurringPayments = pgTable('recurring_payments', {
-  id: serial('id').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
   userId: text('user_id').notNull().default(''), // Clerk user ID
   name: text('name').notNull(),
   amount: numeric('amount', { precision: 10, scale: 2 }).notNull(), // Total amount due when payment hits

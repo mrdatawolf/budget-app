@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { BudgetItem } from '@/types/budget';
 
 interface LinkedAccount {
-  id: number;
+  id: string;
   accountName: string;
   institutionName: string;
   lastFour: string;
@@ -12,9 +12,9 @@ interface LinkedAccount {
 }
 
 export interface TransactionToEdit {
-  id: number;
-  budgetItemId?: number | null;
-  linkedAccountId?: number | null;
+  id: string;
+  budgetItemId?: string | null;
+  linkedAccountId?: string | null;
   date: string;
   description: string;
   amount: number;
@@ -27,7 +27,7 @@ interface AddTransactionModalProps {
   onClose: () => void;
   onAddTransaction: (transaction: {
     budgetItemId: string;
-    linkedAccountId?: number;
+    linkedAccountId?: string;
     date: string;
     description: string;
     amount: number;
@@ -35,16 +35,16 @@ interface AddTransactionModalProps {
     merchant?: string;
   }) => void;
   onEditTransaction?: (transaction: {
-    id: number;
+    id: string;
     budgetItemId: string;
-    linkedAccountId?: number;
+    linkedAccountId?: string;
     date: string;
     description: string;
     amount: number;
     type: 'income' | 'expense';
     merchant?: string;
   }) => void;
-  onDeleteTransaction?: (id: number) => void;
+  onDeleteTransaction?: (id: string) => void;
   budgetItems: { category: string; items: BudgetItem[] }[];
   linkedAccounts?: LinkedAccount[];
   transactionToEdit?: TransactionToEdit | null;
@@ -102,7 +102,7 @@ export default function AddTransactionModal({
 
     const transactionData = {
       budgetItemId,
-      linkedAccountId: linkedAccountId ? parseInt(linkedAccountId) : undefined,
+      linkedAccountId: linkedAccountId || undefined,
       date,
       description,
       amount: parseFloat(amount),

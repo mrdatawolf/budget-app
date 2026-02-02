@@ -3,7 +3,7 @@
 import { useState } from 'react';
 
 interface BufferSectionProps {
-  budgetId?: number;
+  budgetId?: string;
   buffer: number;
   onRefresh: () => void;
 }

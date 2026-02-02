@@ -7,7 +7,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { useToast } from '@/contexts/ToastContext';
 
 interface LinkedAccount {
-  id: number;
+  id: string;
   tellerAccountId: string;
   institutionName: string;
   accountName: string;
@@ -103,7 +103,7 @@ export default function SettingsPage() {
     tellerConnect.open();
   };
 
-  const handleDeleteAccount = async (id: number) => {
+  const handleDeleteAccount = async (id: string) => {
     if (!confirm('Are you sure you want to disconnect this account?')) return;
 
     try {

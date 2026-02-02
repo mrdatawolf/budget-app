@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       accountsToSync = await db
         .select()
         .from(linkedAccounts)
-        .where(and(eq(linkedAccounts.id, parseInt(accountId)), eq(linkedAccounts.userId, userId)));
+        .where(and(eq(linkedAccounts.id, accountId), eq(linkedAccounts.userId, userId)));
     } else {
       // Sync all user's accounts
       accountsToSync = await db.select().from(linkedAccounts).where(eq(linkedAccounts.userId, userId));
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
 
         // Separate into new vs existing
         const toInsert: typeof transactions.$inferInsert[] = [];
-        const toUpdate: { id: number; data: Partial<typeof transactions.$inferInsert> }[] = [];
+        const toUpdate: { id: string; data: Partial<typeof transactions.$inferInsert> }[] = [];
 
         for (const txn of tellerTransactions) {
           const amountNum = Math.abs(parseFloat(txn.amount));

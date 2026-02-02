@@ -6,7 +6,7 @@ import { requireAuth, isAuthError } from '@/lib/auth';
 import { splitTransactions } from '@/db/schema';
 
 // Helper to verify budget item ownership
-async function verifyBudgetItemOwnership(budgetItemId: number, userId: string): Promise<boolean> {
+async function verifyBudgetItemOwnership(budgetItemId: string, userId: string): Promise<boolean> {
   const item = await db.query.budgetItems.findFirst({
     where: eq(budgetItems.id, budgetItemId),
     with: {
@@ -19,7 +19,7 @@ async function verifyBudgetItemOwnership(budgetItemId: number, userId: string): 
 }
 
 // Helper to verify transaction ownership (via budgetItem, linkedAccount, or split transactions)
-async function verifyTransactionOwnership(transactionId: number, userId: string): Promise<boolean> {
+async function verifyTransactionOwnership(transactionId: string, userId: string): Promise<boolean> {
   const txn = await db.query.transactions.findFirst({
     where: eq(transactions.id, transactionId),
     with: {
@@ -82,14 +82,14 @@ export async function POST(request: NextRequest) {
   }
 
   // Verify budget item ownership
-  if (!(await verifyBudgetItemOwnership(parseInt(budgetItemId), userId))) {
+  if (!(await verifyBudgetItemOwnership(budgetItemId, userId))) {
     return NextResponse.json({ error: 'Budget item not found' }, { status: 404 });
   }
 
   // Verify linked account ownership if provided
   if (linkedAccountId) {
     const account = await db.query.linkedAccounts.findFirst({
-      where: and(eq(linkedAccounts.id, parseInt(linkedAccountId)), eq(linkedAccounts.userId, userId)),
+      where: and(eq(linkedAccounts.id, linkedAccountId), eq(linkedAccounts.userId, userId)),
     });
     if (!account) {
       return NextResponse.json({ error: 'Linked account not found' }, { status: 404 });
@@ -99,8 +99,8 @@ export async function POST(request: NextRequest) {
   const [transaction] = await db
     .insert(transactions)
     .values({
-      budgetItemId: parseInt(budgetItemId),
-      linkedAccountId: linkedAccountId ? parseInt(linkedAccountId) : null,
+      budgetItemId: budgetItemId,
+      linkedAccountId: linkedAccountId ? linkedAccountId : null,
       date,
       description,
       amount,
@@ -127,12 +127,12 @@ export async function PUT(request: NextRequest) {
   }
 
   // Verify transaction ownership
-  if (!(await verifyTransactionOwnership(parseInt(id), userId))) {
+  if (!(await verifyTransactionOwnership(id, userId))) {
     return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
   }
 
   // If updating budgetItemId, verify ownership of the new budget item
-  if (budgetItemId && !(await verifyBudgetItemOwnership(parseInt(budgetItemId), userId))) {
+  if (budgetItemId && !(await verifyBudgetItemOwnership(budgetItemId, userId))) {
     return NextResponse.json({ error: 'Budget item not found' }, { status: 404 });
   }
 
@@ -140,10 +140,10 @@ export async function PUT(request: NextRequest) {
   const updateData: Record<string, unknown> = {};
 
   if (budgetItemId !== undefined) {
-    updateData.budgetItemId = budgetItemId ? parseInt(budgetItemId) : null;
+    updateData.budgetItemId = budgetItemId ? budgetItemId : null;
   }
   if (linkedAccountId !== undefined) {
-    updateData.linkedAccountId = linkedAccountId ? parseInt(linkedAccountId) : null;
+    updateData.linkedAccountId = linkedAccountId ? linkedAccountId : null;
   }
   if (date !== undefined) {
     updateData.date = date;
@@ -164,7 +164,7 @@ export async function PUT(request: NextRequest) {
   const [updated] = await db
     .update(transactions)
     .set(updateData)
-    .where(eq(transactions.id, parseInt(id)))
+    .where(eq(transactions.id, id))
     .returning();
 
   return NextResponse.json(updated);
@@ -184,7 +184,7 @@ export async function DELETE(request: NextRequest) {
   }
 
   // Verify transaction ownership
-  if (!(await verifyTransactionOwnership(parseInt(id), userId))) {
+  if (!(await verifyTransactionOwnership(id, userId))) {
     return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
   }
 
@@ -192,7 +192,7 @@ export async function DELETE(request: NextRequest) {
   await db
     .update(transactions)
     .set({ deletedAt: new Date() })
-    .where(eq(transactions.id, parseInt(id)));
+    .where(eq(transactions.id, id));
 
   return NextResponse.json({ success: true });
 }
@@ -212,14 +212,14 @@ export async function GET(request: NextRequest) {
   // Fetch single transaction by ID
   if (id) {
     // Verify ownership before returning
-    if (!(await verifyTransactionOwnership(parseInt(id), userId))) {
+    if (!(await verifyTransactionOwnership(id, userId))) {
       return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
     }
 
     const [transaction] = await db
       .select()
       .from(transactions)
-      .where(eq(transactions.id, parseInt(id)));
+      .where(eq(transactions.id, id));
 
     if (!transaction) {
       return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
@@ -305,7 +305,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   // Verify transaction ownership
-  if (!(await verifyTransactionOwnership(parseInt(id), userId))) {
+  if (!(await verifyTransactionOwnership(id, userId))) {
     return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
   }
 
@@ -313,7 +313,7 @@ export async function PATCH(request: NextRequest) {
   const [restored] = await db
     .update(transactions)
     .set({ deletedAt: null })
-    .where(eq(transactions.id, parseInt(id)))
+    .where(eq(transactions.id, id))
     .returning();
 
   return NextResponse.json(restored);

@@ -13,8 +13,8 @@ interface SplitItem {
 }
 
 export interface ExistingSplit {
-  id: number;
-  budgetItemId: number;
+  id: string;
+  budgetItemId: string;
   amount: number;
   description?: string | null;
 }
@@ -22,8 +22,8 @@ export interface ExistingSplit {
 interface SplitTransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSplit: (splits: { budgetItemId: number; amount: number; description?: string }[]) => void;
-  transactionId: number;
+  onSplit: (splits: { budgetItemId: string; amount: number; description?: string }[]) => void;
+  transactionId: string;
   transactionAmount: number;
   transactionDescription: string;
   budgetItems: { category: string; items: BudgetItem[] }[];
@@ -116,7 +116,7 @@ export default function SplitTransactionModal({
 
     onSplit(
       validSplits.map(s => ({
-        budgetItemId: parseInt(s.budgetItemId),
+        budgetItemId: s.budgetItemId,
         amount: parseFloat(s.amount),
         description: s.description || undefined,
       }))

@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
     await db
       .update(budgetItems)
       .set({ recurringPaymentId: payment.id })
-      .where(eq(budgetItems.id, parseInt(budgetItemId)));
+      .where(eq(budgetItems.id, budgetItemId));
   }
 
   return NextResponse.json(transformToRecurringPayment(payment));
@@ -184,7 +184,7 @@ export async function PUT(request: NextRequest) {
 
   // Verify ownership
   const existing = await db.query.recurringPayments.findFirst({
-    where: and(eq(recurringPayments.id, parseInt(id)), eq(recurringPayments.userId, userId)),
+    where: and(eq(recurringPayments.id, id), eq(recurringPayments.userId, userId)),
   });
 
   if (!existing) {
@@ -206,7 +206,7 @@ export async function PUT(request: NextRequest) {
   const [payment] = await db
     .update(recurringPayments)
     .set(updates)
-    .where(eq(recurringPayments.id, parseInt(id)))
+    .where(eq(recurringPayments.id, id))
     .returning();
 
   return NextResponse.json(transformToRecurringPayment(payment));
@@ -224,7 +224,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Missing payment id' }, { status: 400 });
   }
 
-  const paymentId = parseInt(id);
+  const paymentId = id;
 
   // Verify ownership
   const existing = await db.query.recurringPayments.findFirst({
