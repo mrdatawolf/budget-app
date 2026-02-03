@@ -49,6 +49,7 @@ budget.db
 budget.db-shm
 budget.db-wal
 drizzle/
+/data/
 
 # Claude Code
 .claude/

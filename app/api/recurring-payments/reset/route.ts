@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
+import { getDb } from '@/db';
 import { recurringPayments } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { RecurringFrequency } from '@/types/budget';
@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const body = await request.json();
   const { id } = body;
 

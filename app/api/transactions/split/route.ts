@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
+import { getDb } from '@/db';
 import { transactions, splitTransactions, budgetItems, linkedAccounts } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth, isAuthError } from '@/lib/auth';
@@ -12,6 +12,7 @@ interface SplitItem {
 
 // Helper to verify transaction ownership (via budgetItem, linkedAccount, or split transactions)
 async function verifyTransactionOwnership(transactionId: string, userId: string): Promise<boolean> {
+  const db = await getDb();
   const txn = await db.query.transactions.findFirst({
     where: eq(transactions.id, transactionId),
     with: {
@@ -56,6 +57,7 @@ async function verifyTransactionOwnership(transactionId: string, userId: string)
 
 // Helper to verify budget item ownership
 async function verifyBudgetItemOwnership(budgetItemId: string, userId: string): Promise<boolean> {
+  const db = await getDb();
   const item = await db.query.budgetItems.findFirst({
     where: eq(budgetItems.id, budgetItemId),
     with: {
@@ -74,6 +76,7 @@ export async function POST(request: NextRequest) {
     if (isAuthError(authResult)) return authResult.error;
     const { userId } = authResult;
 
+    const db = await getDb();
     const body = await request.json();
     const { transactionId, splits } = body as { transactionId: string; splits: SplitItem[] };
 
@@ -156,6 +159,7 @@ export async function GET(request: NextRequest) {
     if (isAuthError(authResult)) return authResult.error;
     const { userId } = authResult;
 
+    const db = await getDb();
     const { searchParams } = new URL(request.url);
     const transactionId = searchParams.get('transactionId');
 
@@ -187,6 +191,7 @@ export async function DELETE(request: NextRequest) {
     if (isAuthError(authResult)) return authResult.error;
     const { userId } = authResult;
 
+    const db = await getDb();
     const { searchParams } = new URL(request.url);
     const transactionId = searchParams.get('transactionId');
     const budgetItemId = searchParams.get('budgetItemId'); // Optional: assign to this item after unsplitting

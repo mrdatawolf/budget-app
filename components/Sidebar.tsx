@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { UserButton, useUser } from '@clerk/nextjs';
 import {
   FaWallet,
   FaUniversity,
@@ -12,6 +11,7 @@ import {
   FaChevronRight,
   FaRedo,
   FaLightbulb,
+  FaUser,
 } from 'react-icons/fa';
 
 interface NavItem {
@@ -34,7 +34,6 @@ export default function Sidebar() {
   }, []);
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { user } = useUser();
 
   const monthParam = searchParams.get('month');
   const yearParam = searchParams.get('year');
@@ -132,19 +131,14 @@ export default function Sidebar() {
         </Link>
       </div>
 
-      {/* Footer */}
+      {/* Footer - Local User */}
       <div className={`p-4 border-t border-sidebar-border ${isCollapsed ? 'flex justify-center' : ''}`}>
         <div className={`flex items-center ${isCollapsed ? '' : 'gap-3'}`}>
-          <UserButton
-            afterSignOutUrl="/sign-in"
-            appearance={{
-              elements: {
-                avatarBox: 'h-8 w-8',
-              }
-            }}
-          />
+          <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
+            <FaUser size={14} className="text-white" />
+          </div>
           {!isCollapsed && (
-            <span className="text-sm text-sidebar-text-muted">{user?.firstName || 'Account'}</span>
+            <span className="text-sm text-sidebar-text-muted">Local User</span>
           )}
         </div>
       </div>

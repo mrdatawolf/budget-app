@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const body = await request.json();
   const { sourceMonth, sourceYear, targetMonth, targetYear } = body;
 

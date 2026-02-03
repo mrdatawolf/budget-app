@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
+import { getDb } from '@/db';
 import { budgetCategories, budgetItems, transactions, splitTransactions, budgets } from '@/db/schema';
 import { eq, and, inArray } from 'drizzle-orm';
 import { requireAuth, isAuthError } from '@/lib/auth';
@@ -17,6 +17,7 @@ export async function POST(request: NextRequest) {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const body = await request.json();
   const { budgetId, name, emoji } = body;
 
@@ -63,10 +64,11 @@ export async function DELETE(request: NextRequest) {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const searchParams = request.nextUrl.searchParams;
-  const id = parseInt(searchParams.get('id') || '');
+  const id = searchParams.get('id');
 
-  if (isNaN(id)) {
+  if (!id) {
     return NextResponse.json({ error: 'Invalid category id' }, { status: 400 });
   }
 

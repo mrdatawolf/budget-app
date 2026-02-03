@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
+import { getDb } from '@/db';
 import { linkedAccounts, transactions, splitTransactions } from '@/db/schema';
 import { eq, and, isNull, isNotNull, notInArray, inArray, sql } from 'drizzle-orm';
 import { createTellerClient, TellerTransaction } from '@/lib/teller';
@@ -12,6 +12,7 @@ export async function POST(request: NextRequest) {
     if (isAuthError(authResult)) return authResult.error;
     const { userId } = authResult;
 
+    const db = await getDb();
     const body = await request.json();
     const { accountId, startDate, endDate } = body;
 
@@ -145,6 +146,7 @@ export async function GET(request: NextRequest) {
     if (isAuthError(authResult)) return authResult.error;
     const { userId } = authResult;
 
+    const db = await getDb();
     // Get user's linked account IDs for filtering
     const userAccounts = await db
       .select({ id: linkedAccounts.id })
@@ -187,7 +189,7 @@ export async function GET(request: NextRequest) {
 
     // Look up merchant-based suggestions from historical categorizations
     const merchantNames = [...new Set(userTransactions.map(t => t.merchant).filter(Boolean))] as string[];
-    const merchantSuggestions: Record<string, number> = {};
+    const merchantSuggestions: Record<string, string> = {};
 
     if (merchantNames.length > 0) {
       // Find previously categorized transactions with matching merchants
@@ -213,7 +215,7 @@ export async function GET(request: NextRequest) {
       });
 
       // Count frequency of each merchant -> budgetItemId pairing
-      const merchantItemCounts: Record<string, Record<number, number>> = {};
+      const merchantItemCounts: Record<string, Record<string, number>> = {};
       for (const t of userHistorical) {
         const m = t.merchant!;
         if (!merchantItemCounts[m]) merchantItemCounts[m] = {};
@@ -223,14 +225,14 @@ export async function GET(request: NextRequest) {
       // Pick the most frequently used budget item for each merchant
       for (const [merchant, counts] of Object.entries(merchantItemCounts)) {
         let maxCount = 0;
-        let bestItemId = 0;
+        let bestItemId = '';
         for (const [itemId, count] of Object.entries(counts)) {
           if (count > maxCount) {
             maxCount = count;
-            bestItemId = parseInt(itemId);
+            bestItemId = itemId;
           }
         }
-        if (bestItemId > 0) {
+        if (bestItemId) {
           merchantSuggestions[merchant] = bestItemId;
         }
       }

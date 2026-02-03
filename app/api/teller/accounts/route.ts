@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
+import { getDb } from '@/db';
 import { linkedAccounts } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { createTellerClient, TellerAccount } from '@/lib/teller';
@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
     if (isAuthError(authResult)) return authResult.error;
     const { userId } = authResult;
 
+    const db = await getDb();
     const accounts = await db.select().from(linkedAccounts).where(eq(linkedAccounts.userId, userId));
     return NextResponse.json(accounts);
   } catch (error) {
@@ -27,6 +28,7 @@ export async function POST(request: NextRequest) {
     if (isAuthError(authResult)) return authResult.error;
     const { userId } = authResult;
 
+    const db = await getDb();
     const body = await request.json();
     const { accessToken, enrollment } = body;
 
@@ -96,6 +98,7 @@ export async function DELETE(request: NextRequest) {
     if (isAuthError(authResult)) return authResult.error;
     const { userId } = authResult;
 
+    const db = await getDb();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 

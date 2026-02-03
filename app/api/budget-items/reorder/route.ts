@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
+import { getDb } from '@/db';
 import { budgetItems, budgetCategories, budgets } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth, isAuthError } from '@/lib/auth';
@@ -9,6 +9,7 @@ export async function PUT(request: NextRequest) {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const body = await request.json();
   const { items } = body;
 

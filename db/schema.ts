@@ -144,7 +144,7 @@ export const recurringPayments = pgTable('recurring_payments', {
   userId: text('user_id').notNull().default(''), // Clerk user ID
   name: text('name').notNull(),
   amount: numeric('amount', { precision: 10, scale: 2 }).notNull(), // Total amount due when payment hits
-  frequency: text('frequency').notNull().$type<'monthly' | 'quarterly' | 'semi-annually' | 'annually'>(),
+  frequency: text('frequency').notNull().$type<'weekly' | 'bi-weekly' | 'monthly' | 'quarterly' | 'semi-annually' | 'annually'>(),
   nextDueDate: text('next_due_date').notNull(), // ISO date string
   fundedAmount: numeric('funded_amount', { precision: 10, scale: 2 }).notNull().default('0'),
   categoryType: text('category_type').$type<'income' | 'giving' | 'household' | 'transportation' | 'food' | 'personal' | 'insurance' | 'saving'>(),

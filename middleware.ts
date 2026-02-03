@@ -1,17 +1,15 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
-// Define public routes (accessible without authentication)
-const isPublicRoute = createRouteMatcher([
-  '/sign-in(.*)',
-  '/sign-up(.*)',
-]);
-
-export default clerkMiddleware(async (auth, request) => {
-  // Only protect non-public routes - let Clerk handle auth page redirects
-  if (!isPublicRoute(request)) {
-    await auth.protect();
-  }
-});
+/**
+ * Middleware for local-first mode.
+ * All routes are public - no authentication required for local database operations.
+ * Cloud sync (Phase 4+) will handle authentication separately when connecting to cloud.
+ */
+export function middleware(request: NextRequest) {
+  // Allow all requests through - no auth protection in local-only mode
+  return NextResponse.next();
+}
 
 export const config = {
   matcher: [

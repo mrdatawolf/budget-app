@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
+import { getDb } from '@/db';
 import { userOnboarding } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { requireAuth, isAuthError } from '@/lib/auth';
@@ -10,6 +10,7 @@ export async function GET() {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const record = await db.query.userOnboarding?.findFirst({
     where: eq(userOnboarding.userId, userId),
   });
@@ -32,6 +33,7 @@ export async function POST() {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const existing = await db.select().from(userOnboarding).where(eq(userOnboarding.userId, userId));
   if (existing.length > 0) {
     return NextResponse.json(existing[0]);
@@ -47,6 +49,7 @@ export async function PUT(request: NextRequest) {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const { step } = await request.json();
 
   const existing = await db.select().from(userOnboarding).where(eq(userOnboarding.userId, userId));
@@ -68,6 +71,7 @@ export async function PATCH(request: NextRequest) {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const { action } = await request.json();
 
   const updates: Record<string, unknown> = {};

@@ -4,24 +4,33 @@ import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { FaPlus, FaEdit, FaTrash, FaCheck, FaExclamationTriangle } from 'react-icons/fa';
 import DashboardLayout from '@/components/DashboardLayout';
-import { RecurringPayment, RecurringFrequency, CategoryType } from '@/types/budget';
+import { RecurringPayment, RecurringFrequency, CategoryType, Budget } from '@/types/budget';
 import { formatCurrency } from '@/lib/formatCurrency';
+import { transformDbBudgetToAppBudget } from '@/lib/budgetHelpers';
 
 const frequencyLabels: Record<RecurringFrequency, string> = {
+  'weekly': 'Weekly',
+  'bi-weekly': 'Every 2 Weeks',
   'monthly': 'Monthly',
   'quarterly': 'Quarterly',
   'semi-annually': 'Semi-Annually',
   'annually': 'Annually',
 };
 
+// For calculating monthly contribution: amount / frequencyMonths gives monthly cost
+// Weekly: ~4.33 weeks/month, so 1/4.33 ≈ 0.23
+// Bi-weekly: ~2.17 payments/month, so 1/2.17 ≈ 0.46
 const frequencyMonths: Record<RecurringFrequency, number> = {
+  'weekly': 7 / 30.44,      // ~0.23 months between payments
+  'bi-weekly': 14 / 30.44,  // ~0.46 months between payments
   'monthly': 1,
   'quarterly': 3,
   'semi-annually': 6,
   'annually': 12,
 };
 
-const categoryLabels: Record<CategoryType, string> = {
+// Default labels for built-in categories (used as fallback)
+const defaultCategoryLabels: Record<string, string> = {
   'income': 'Income',
   'giving': 'Giving',
   'household': 'Household',
@@ -47,6 +56,7 @@ function RecurringPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingPayment, setEditingPayment] = useState<RecurringPayment | null>(null);
+  const [availableCategories, setAvailableCategories] = useState<Record<string, string>>({});
 
   // Form state
   const [formData, setFormData] = useState({
@@ -56,6 +66,30 @@ function RecurringPage() {
     nextDueDate: '',
     categoryType: '' as CategoryType | '',
   });
+
+  // Fetch categories from current budget
+  const fetchCategories = useCallback(async () => {
+    try {
+      const currentDate = new Date();
+      const month = currentDate.getMonth();
+      const year = currentDate.getFullYear();
+      const response = await fetch(`/api/budgets?month=${month}&year=${year}`);
+      if (response.ok) {
+        const data = await response.json();
+        const budget = transformDbBudgetToAppBudget(data);
+        // Build category labels from budget (key -> display name)
+        const categories: Record<string, string> = {};
+        Object.entries(budget.categories).forEach(([key, category]) => {
+          categories[key] = category.name;
+        });
+        setAvailableCategories(categories);
+      }
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+      // Fall back to default categories
+      setAvailableCategories(defaultCategoryLabels);
+    }
+  }, []);
 
   const fetchPayments = useCallback(async () => {
     try {
@@ -71,7 +105,8 @@ function RecurringPage() {
 
   useEffect(() => {
     fetchPayments();
-  }, [fetchPayments]);
+    fetchCategories();
+  }, [fetchPayments, fetchCategories]);
 
   // Track budget item ID to link after creating recurring payment
   const [pendingBudgetItemId, setPendingBudgetItemId] = useState<string | null>(null);
@@ -308,7 +343,7 @@ function RecurringPage() {
                       className="w-full px-3 py-2 border border-border-strong rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
                     >
                       <option value="">Select a category...</option>
-                      {Object.entries(categoryLabels)
+                      {Object.entries(availableCategories)
                         .filter(([key]) => key !== 'income') // Exclude income for recurring payments
                         .map(([value, label]) => (
                           <option key={value} value={value}>{label}</option>
@@ -356,7 +391,7 @@ function RecurringPage() {
                         <h3 className="font-semibold text-text-primary">{payment.name}</h3>
                         {payment.categoryType && (
                           <span className="px-2 py-0.5 text-xs font-medium bg-surface-secondary text-text-secondary rounded">
-                            {categoryLabels[payment.categoryType]}
+                            {availableCategories[payment.categoryType] || defaultCategoryLabels[payment.categoryType] || payment.categoryType}
                           </span>
                         )}
                       </div>

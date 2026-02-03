@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
+import { getDb } from '@/db';
 import { recurringPayments, budgetItems, transactions, splitTransactions } from '@/db/schema';
 import { eq, desc, and, isNull } from 'drizzle-orm';
 import { RecurringPayment, RecurringFrequency, CategoryType } from '@/types/budget';
@@ -71,6 +71,7 @@ export async function GET(request: NextRequest) {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const payments = await db.query.recurringPayments.findMany({
     where: and(eq(recurringPayments.userId, userId), eq(recurringPayments.isActive, true)),
     orderBy: [desc(recurringPayments.nextDueDate)],
@@ -138,6 +139,7 @@ export async function POST(request: NextRequest) {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const body = await request.json();
   const { name, amount, frequency, nextDueDate, categoryType, budgetItemId } = body;
 
@@ -175,6 +177,7 @@ export async function PUT(request: NextRequest) {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const body = await request.json();
   const { id, name, amount, frequency, nextDueDate, fundedAmount, categoryType, isActive } = body;
 
@@ -217,6 +220,7 @@ export async function DELETE(request: NextRequest) {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const searchParams = request.nextUrl.searchParams;
   const id = searchParams.get('id');
 

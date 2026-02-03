@@ -257,7 +257,7 @@ function Home() {
     }
   };
 
-  const handleDeleteCategory = async (dbId: number) => {
+  const handleDeleteCategory = async (dbId: string) => {
     if (!confirm('Delete this category? All its items and transactions will be removed.')) return;
     try {
       const response = await fetch(`/api/budget-categories?id=${dbId}`, { method: 'DELETE' });
@@ -330,9 +330,9 @@ function Home() {
       <DashboardLayout>
         <div className="h-full flex overflow-hidden">
           {/* Main content area */}
-          <div className="flex-1 overflow-y-auto hide-scrollbar">
-            {/* Header - stretched wider */}
-            <div className="px-4 sm:px-6 lg:px-8 pt-8">
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Header - fixed at top */}
+            <div className="flex-shrink-0 px-4 sm:px-6 lg:px-8 pt-8 bg-surface">
               <BudgetHeader
                 month={budget.month}
                 year={budget.year}
@@ -341,8 +341,9 @@ function Home() {
               />
             </div>
 
-            {/* Empty state content */}
-            <div className="mt-8 text-center">
+            {/* Empty state content - scrollable */}
+            <div className="flex-1 overflow-y-auto hide-scrollbar">
+              <div className="mt-8 text-center">
                 {/* Illustration */}
                 <div className="flex items-center justify-center mb-8">
                   <img
@@ -369,6 +370,7 @@ function Home() {
                 >
                   Start Planning for {getMonthName(budget.month)}
                 </button>
+              </div>
             </div>
           </div>
 
@@ -396,9 +398,9 @@ function Home() {
     <DashboardLayout>
       <div className="h-full flex overflow-hidden">
         {/* Main content area */}
-        <div className="flex-1 overflow-y-auto hide-scrollbar">
-          {/* Header - stretched wider */}
-          <div className="px-4 sm:px-6 lg:px-8 pt-8">
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Header - fixed at top */}
+          <div className="flex-shrink-0 px-4 sm:px-6 lg:px-8 pt-8 bg-surface">
             <BudgetHeader
               month={budget.month}
               year={budget.year}
@@ -407,8 +409,9 @@ function Home() {
             />
           </div>
 
-          {/* Budget content - constrained width */}
-          <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* Budget content - scrollable */}
+          <div className="flex-1 overflow-y-auto hide-scrollbar">
+            <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div className="space-y-6 pb-8">
               <BufferSection
                 budgetId={budget.id}
@@ -619,6 +622,7 @@ function Home() {
             </div>
           </div>
         </div>
+      </div>
 
         {/* Toggle button for summary sidebar on tablet */}
         <button
