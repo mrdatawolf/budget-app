@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
+import { getDb } from '@/db';
 import { budgets, budgetCategories, budgetItems, recurringPayments } from '@/db/schema';
 import { eq, and, asc } from 'drizzle-orm';
 import { requireAuth, isAuthError } from '@/lib/auth';
@@ -8,6 +8,8 @@ import { requireAuth, isAuthError } from '@/lib/auth';
 function getMonthlyContribution(amount: string | number, frequency: string): string {
   const amt = typeof amount === 'string' ? parseFloat(amount) : amount;
   switch (frequency) {
+    case 'weekly': return String(amt * (30.44 / 7));       // ~4.35 payments per month
+    case 'bi-weekly': return String(amt * (30.44 / 14));   // ~2.17 payments per month
     case 'monthly': return String(amt);
     case 'quarterly': return String(amt / 3);
     case 'semi-annually': return String(amt / 6);
@@ -32,6 +34,7 @@ export async function GET(request: NextRequest) {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const searchParams = request.nextUrl.searchParams;
   const month = parseInt(searchParams.get('month') || '');
   const year = parseInt(searchParams.get('year') || '');
@@ -111,13 +114,23 @@ export async function GET(request: NextRequest) {
       if (dueDate < today) {
         // Advance nextDueDate by one frequency period (keep advancing until it's in the future)
         const next = new Date(dueDate);
+
+        // Weekly and bi-weekly use days, others use months
+        const daysToAdd =
+          recurring.frequency === 'weekly' ? 7 :
+          recurring.frequency === 'bi-weekly' ? 14 : 0;
         const monthsToAdd =
           recurring.frequency === 'monthly' ? 1 :
           recurring.frequency === 'quarterly' ? 3 :
-          recurring.frequency === 'semi-annually' ? 6 : 12;
+          recurring.frequency === 'semi-annually' ? 6 :
+          recurring.frequency === 'annually' ? 12 : 0;
 
         while (next < today) {
-          next.setMonth(next.getMonth() + monthsToAdd);
+          if (daysToAdd > 0) {
+            next.setDate(next.getDate() + daysToAdd);
+          } else {
+            next.setMonth(next.getMonth() + monthsToAdd);
+          }
         }
 
         await db.update(recurringPayments)
@@ -192,6 +205,7 @@ export async function PUT(request: NextRequest) {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const body = await request.json();
   const { id, buffer } = body;
 

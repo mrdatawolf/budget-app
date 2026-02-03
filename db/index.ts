@@ -1,6 +1,20 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import * as schema from './schema';
+import { getLocalDb, closeLocalDb, schema } from './local';
+import { createCloudDb, getCloudDb } from './cloud';
 
-const client = postgres(process.env.DATABASE_URL!, { prepare: false });
-export const db = drizzle(client, { schema });
+/**
+ * Get the primary database instance.
+ * Uses local PGlite database for all app operations.
+ *
+ * Usage in API routes:
+ *   const db = await getDb();
+ *   const result = await db.query.budgets.findFirst(...);
+ */
+export async function getDb() {
+  return getLocalDb();
+}
+
+// Re-export for convenience
+export { getLocalDb, closeLocalDb, createCloudDb, getCloudDb, schema };
+
+// Re-export schema tables and relations for direct imports
+export * from './schema';

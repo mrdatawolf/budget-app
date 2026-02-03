@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
+import { getDb } from '@/db';
 import { budgets, linkedAccounts, recurringPayments } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { requireAuth, isAuthError } from '@/lib/auth';
@@ -14,6 +14,7 @@ export async function POST(request: NextRequest) {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const results = {
     budgets: 0,
     linkedAccounts: 0,
@@ -63,6 +64,7 @@ export async function GET(request: NextRequest) {
   const authResult = await requireAuth();
   if (isAuthError(authResult)) return authResult.error;
 
+  const db = await getDb();
   // Count unclaimed records
   const unclaimedBudgets = await db.query.budgets.findMany({
     where: eq(budgets.userId, ''),

@@ -70,7 +70,7 @@ export interface Budget {
   categories: Record<string, BudgetCategory>;
 }
 
-export type RecurringFrequency = 'monthly' | 'quarterly' | 'semi-annually' | 'annually';
+export type RecurringFrequency = 'weekly' | 'bi-weekly' | 'monthly' | 'quarterly' | 'semi-annually' | 'annually';
 
 export interface RecurringPayment {
   id: string;

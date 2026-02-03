@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
+import { getDb } from '@/db';
 import { transactions, budgetItems, linkedAccounts } from '@/db/schema';
 import { eq, isNotNull, and } from 'drizzle-orm';
 import { requireAuth, isAuthError } from '@/lib/auth';
@@ -7,6 +7,7 @@ import { splitTransactions } from '@/db/schema';
 
 // Helper to verify budget item ownership
 async function verifyBudgetItemOwnership(budgetItemId: string, userId: string): Promise<boolean> {
+  const db = await getDb();
   const item = await db.query.budgetItems.findFirst({
     where: eq(budgetItems.id, budgetItemId),
     with: {
@@ -20,6 +21,7 @@ async function verifyBudgetItemOwnership(budgetItemId: string, userId: string): 
 
 // Helper to verify transaction ownership (via budgetItem, linkedAccount, or split transactions)
 async function verifyTransactionOwnership(transactionId: string, userId: string): Promise<boolean> {
+  const db = await getDb();
   const txn = await db.query.transactions.findFirst({
     where: eq(transactions.id, transactionId),
     with: {
@@ -74,6 +76,7 @@ export async function POST(request: NextRequest) {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const body = await request.json();
   const { budgetItemId, linkedAccountId, date, description, amount, type, merchant, checkNumber } = body;
 
@@ -119,6 +122,7 @@ export async function PUT(request: NextRequest) {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const body = await request.json();
   const { id, budgetItemId, linkedAccountId, date, description, amount, type, merchant } = body;
 
@@ -176,6 +180,7 @@ export async function DELETE(request: NextRequest) {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const searchParams = request.nextUrl.searchParams;
   const id = searchParams.get('id');
 
@@ -203,6 +208,7 @@ export async function GET(request: NextRequest) {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const searchParams = request.nextUrl.searchParams;
   const id = searchParams.get('id');
   const month = searchParams.get('month');
@@ -297,6 +303,7 @@ export async function PATCH(request: NextRequest) {
   if (isAuthError(authResult)) return authResult.error;
   const { userId } = authResult;
 
+  const db = await getDb();
   const body = await request.json();
   const { id } = body;
 
