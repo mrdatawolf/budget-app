@@ -98,7 +98,45 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // Auto-advance recurring payment due dates (don't create budget items yet - that happens on copy/start)
+  // Ensure all default categories exist for this budget
+  if (budget) {
+    const existingTypes = budget.categories.map(c => c.categoryType);
+    const missingCategories = CATEGORY_TYPES.filter(cat => !existingTypes.includes(cat.type));
+
+    if (missingCategories.length > 0) {
+      for (const cat of missingCategories) {
+        await db.insert(budgetCategories).values({
+          budgetId: budget.id,
+          categoryType: cat.type,
+          name: cat.name,
+        });
+      }
+
+      // Re-fetch budget with new categories
+      budget = await db.query.budgets.findFirst({
+        where: eq(budgets.id, budget.id),
+        with: {
+          categories: {
+            with: {
+              items: {
+                orderBy: [asc(budgetItems.order)],
+                with: {
+                  transactions: true,
+                  splitTransactions: {
+                    with: {
+                      parentTransaction: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+    }
+  }
+
+  // Sync recurring payments to budget items
   if (budget) {
     const activeRecurring = await db.query.recurringPayments.findMany({
       where: and(eq(recurringPayments.userId, userId), eq(recurringPayments.isActive, true)),
