@@ -39,6 +39,7 @@ interface LinkedAccount {
 interface SelectedBudgetItem {
   item: BudgetItem;
   categoryName: string;
+  categoryType?: string;
 }
 
 export default function HomeWrapper() {
@@ -168,8 +169,8 @@ function Home() {
   };
 
   // Handle clicking on a budget item to show details in sidebar
-  const handleItemClick = (item: BudgetItem, categoryName: string) => {
-    setSelectedBudgetItem({ item, categoryName });
+  const handleItemClick = (item: BudgetItem, categoryName: string, categoryType?: string) => {
+    setSelectedBudgetItem({ item, categoryName, categoryType });
   };
 
   // Handle clicking on a transaction to edit it
@@ -463,6 +464,7 @@ function Home() {
                   <div key={key} className="relative group">
                     <BudgetSection
                       category={category}
+                      categoryType={key}
                       onRefresh={refreshBudget}
                       onTransactionClick={handleTransactionClick}
                       onSplitClick={handleSplitClick}

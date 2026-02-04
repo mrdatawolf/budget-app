@@ -8,8 +8,8 @@ import { requireAuth, isAuthError } from '@/lib/auth';
 function getMonthlyContribution(amount: string | number, frequency: string): string {
   const amt = typeof amount === 'string' ? parseFloat(amount) : amount;
   switch (frequency) {
-    case 'weekly': return String(amt * (30.44 / 7));       // ~4.35 payments per month
-    case 'bi-weekly': return String(amt * (30.44 / 14));   // ~2.17 payments per month
+    case 'weekly': return String(amt * 4);        // 4 payments per month
+    case 'bi-weekly': return String(amt * 2);     // 2 payments per month
     case 'monthly': return String(amt);
     case 'quarterly': return String(amt / 3);
     case 'semi-annually': return String(amt / 6);
@@ -189,12 +189,28 @@ export async function GET(request: NextRequest) {
       const category = budget.categories.find(c => c.categoryType === recurring.categoryType);
       if (!category) continue;
 
+      // Calculate the expected monthly contribution
+      const monthlyContribution = getMonthlyContribution(recurring.amount, recurring.frequency);
+
       // Check if a budget item for this recurring payment already exists
       const existingItem = category.items.find(item => item.recurringPaymentId === recurring.id);
-      if (existingItem) continue;
+
+      if (existingItem) {
+        // Update existing item if planned amount doesn't match (handles bi-weekly, etc.)
+        const existingPlanned = parseFloat(String(existingItem.planned));
+        const expectedPlanned = parseFloat(monthlyContribution);
+
+        // Update if difference is more than 1 cent (avoid floating point issues)
+        if (Math.abs(existingPlanned - expectedPlanned) > 0.01) {
+          await db.update(budgetItems)
+            .set({ planned: monthlyContribution })
+            .where(eq(budgetItems.id, existingItem.id));
+          itemsCreated = true; // Flag to re-fetch
+        }
+        continue;
+      }
 
       // Create the budget item
-      const monthlyContribution = getMonthlyContribution(recurring.amount, recurring.frequency);
       const maxOrder = category.items.length > 0
         ? Math.max(...category.items.map(item => item.order || 0))
         : -1;
