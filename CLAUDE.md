@@ -9,6 +9,12 @@ A zero-based budget tracking application built with Next.js, TypeScript, and Tai
 **Current Version:** v1.9.0
 **Last Session:** 2026-02-04
 
+## Instructions for Claude
+
+- **Do NOT commit** unless explicitly authorized by the user
+- Wait for user approval before running `git commit`, `git push`, or similar commands
+- When changes are ready, describe what would be committed and ask if the user wants to proceed
+
 ## Tech Stack
 
 - **Framework:** Next.js 16.x (App Router)
