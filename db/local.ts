@@ -4,16 +4,16 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as schema from './schema';
 
-// PGlite storage location
+// PGlite storage location - configurable via environment variable
 // - In Node.js (API routes): uses file system
 // - In browser (future static build): will use IndexedDB
-const DB_PATH = './data/budget-local';
+const DB_PATH = process.env.PGLITE_DB_LOCATION || './data/budget-local';
 
+// Track initialization state
 let pgliteClient: PGlite | null = null;
 let localDbInstance: ReturnType<typeof drizzle<typeof schema>> | null = null;
-
-// Promise-based singleton to prevent race conditions during initialization
 let initializationPromise: Promise<ReturnType<typeof drizzle<typeof schema>>> | null = null;
+let initializationError: Error | null = null;
 
 /**
  * Ensure the data directory exists.
@@ -26,17 +26,31 @@ function ensureDataDirectory(): void {
 }
 
 /**
- * Clear corrupted database files.
+ * Create a backup of the database directory.
+ * Returns the backup path if successful, null if failed.
  */
-function clearDatabaseFiles(): void {
-  if (fs.existsSync(DB_PATH)) {
-    fs.rmSync(DB_PATH, { recursive: true, force: true });
+function createBackup(): string | null {
+  if (!fs.existsSync(DB_PATH)) {
+    return null;
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupPath = `${DB_PATH}-backup-${timestamp}`;
+
+  try {
+    // Copy the database directory recursively
+    fs.cpSync(DB_PATH, backupPath, { recursive: true });
+    console.log(`Database backup created at: ${backupPath}`);
+    return backupPath;
+  } catch (error) {
+    console.error('Failed to create database backup:', error);
+    return null;
   }
 }
 
 /**
  * Internal initialization function - only called once.
- * If initialization fails (corrupted DB), clears and retries once.
+ * IMPORTANT: Never destroys user data. Fails gracefully with clear error message.
  */
 async function initializeLocalDb(): Promise<ReturnType<typeof drizzle<typeof schema>>> {
   ensureDataDirectory();
@@ -45,23 +59,51 @@ async function initializeLocalDb(): Promise<ReturnType<typeof drizzle<typeof sch
     pgliteClient = new PGlite(DB_PATH);
     await pgliteClient.waitReady;
   } catch (error) {
-    console.warn('PGlite initialization failed, clearing database and retrying...', error);
-    // Clear corrupted database files
-    pgliteClient = null;
-    clearDatabaseFiles();
-    ensureDataDirectory();
+    // Create a backup before reporting the error
+    const backupPath = createBackup();
 
-    // Retry initialization
-    pgliteClient = new PGlite(DB_PATH);
-    await pgliteClient.waitReady;
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const fullError = new Error(
+      `PGlite database initialization failed. Your data has NOT been deleted.\n` +
+      `Database location: ${DB_PATH}\n` +
+      (backupPath ? `Backup created at: ${backupPath}\n` : '') +
+      `Original error: ${errorMessage}\n\n` +
+      `Possible solutions:\n` +
+      `1. Check if another process is using the database\n` +
+      `2. Verify the database directory has correct permissions\n` +
+      `3. If the database is corrupted, you can manually delete ${DB_PATH} to start fresh\n` +
+      `4. Set PGLITE_DB_LOCATION in .env to use a different location`
+    );
+
+    initializationError = fullError;
+    pgliteClient = null;
+    throw fullError;
   }
 
   const db = drizzle(pgliteClient, { schema });
 
   // Initialize schema on first connection
-  await initializeSchema(pgliteClient);
+  try {
+    await initializeSchema(pgliteClient);
+  } catch (schemaError) {
+    // Schema initialization failed - this is recoverable, don't destroy data
+    const errorMessage = schemaError instanceof Error ? schemaError.message : String(schemaError);
+    const fullError = new Error(
+      `Database schema initialization failed. Your data has NOT been deleted.\n` +
+      `Database location: ${DB_PATH}\n` +
+      `Original error: ${errorMessage}\n\n` +
+      `This may be a migration issue. Please check the console for details.`
+    );
+
+    initializationError = fullError;
+    // Close the client since we can't use it properly
+    await pgliteClient.close();
+    pgliteClient = null;
+    throw fullError;
+  }
 
   localDbInstance = db;
+  initializationError = null;
   return db;
 }
 
@@ -75,6 +117,12 @@ export async function getLocalDb() {
     return localDbInstance;
   }
 
+  // If there was a previous initialization error, throw it immediately
+  // This prevents repeated failed attempts while showing the user the error
+  if (initializationError) {
+    throw initializationError;
+  }
+
   // If initialization is in progress, wait for it
   if (initializationPromise) {
     return initializationPromise;
@@ -86,10 +134,25 @@ export async function getLocalDb() {
   try {
     return await initializationPromise;
   } catch (error) {
-    // Reset on failure so retry is possible
+    // Keep the error for future calls, but reset promise so state is clear
     initializationPromise = null;
     throw error;
   }
+}
+
+/**
+ * Get the current database initialization error, if any.
+ * Useful for displaying error state in the UI.
+ */
+export function getDbInitError(): Error | null {
+  return initializationError;
+}
+
+/**
+ * Get the configured database path.
+ */
+export function getDbPath(): string {
+  return DB_PATH;
 }
 
 /**

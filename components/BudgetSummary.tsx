@@ -41,7 +41,7 @@ interface UncategorizedTransaction {
   type: "income" | "expense";
   merchant: string | null;
   status: string | null;
-  suggestedBudgetItemId?: number | null;
+  suggestedBudgetItemId?: string | null;
 }
 
 interface LinkedAccount {
@@ -342,9 +342,58 @@ export default function BudgetSummary({
         setAssigningId(null);
         setSelectedBudgetItemId("");
         onRefresh?.();
+      } else {
+        const errorData = await response.json();
+        toast.error(errorData.error || "Failed to assign transaction");
+        console.error("Error assigning transaction:", errorData);
       }
     } catch (error) {
       console.error("Error assigning transaction:", error);
+      toast.error("Failed to assign transaction");
+    }
+  };
+
+  // Get transactions with suggestions
+  const transactionsWithSuggestions = filteredUncategorizedTxns.filter(
+    txn => txn.suggestedBudgetItemId && getBudgetItemName(txn.suggestedBudgetItemId)
+  );
+
+  const [isApplyingAll, setIsApplyingAll] = useState(false);
+
+  const handleApplyAllSuggestions = async () => {
+    if (transactionsWithSuggestions.length === 0) return;
+
+    setIsApplyingAll(true);
+    try {
+      const assignments = transactionsWithSuggestions.map(txn => ({
+        transactionId: txn.id,
+        budgetItemId: String(txn.suggestedBudgetItemId),
+      }));
+
+      const response = await fetch("/api/transactions/batch-assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignments }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        // Remove assigned transactions from the list
+        const assignedIds = new Set(assignments.map(a => a.transactionId));
+        setUncategorizedTxns(
+          uncategorizedTxns.filter((t) => !assignedIds.has(t.id)),
+        );
+        toast.success(`Applied ${result.assigned} suggestion${result.assigned !== 1 ? 's' : ''}`);
+        onRefresh?.();
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "Failed to apply suggestions");
+      }
+    } catch (error) {
+      console.error("Error applying all suggestions:", error);
+      toast.error("Failed to apply suggestions");
+    } finally {
+      setIsApplyingAll(false);
     }
   };
 
@@ -409,10 +458,10 @@ export default function BudgetSummary({
   };
 
   // Look up a budget item name by ID for suggestion badges
-  const getBudgetItemName = (itemId: number): string | null => {
+  const getBudgetItemName = (itemId: string): string | null => {
     for (const category of Object.values(budget.categories)) {
       for (const item of category.items) {
-        if (String(item.id) === String(itemId)) return item.name;
+        if (item.id === itemId) return item.name;
       }
     }
     return null;
@@ -990,8 +1039,19 @@ export default function BudgetSummary({
               >
                 Deleted
               </button>
-              {/* Sync button */}
-              <div className="ml-auto flex items-center">
+              {/* Action buttons */}
+              <div className="ml-auto flex items-center gap-2">
+                {transactionsWithSuggestions.length > 0 && transactionSubTab === "new" && (
+                  <button
+                    onClick={handleApplyAllSuggestions}
+                    disabled={isApplyingAll}
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-white hover:bg-primary-hover rounded disabled:opacity-50"
+                    title={`Apply ${transactionsWithSuggestions.length} suggestion${transactionsWithSuggestions.length !== 1 ? 's' : ''}`}
+                  >
+                    <FaCheck size={12} />
+                    Apply All ({transactionsWithSuggestions.length})
+                  </button>
+                )}
                 <button
                   onClick={handleSync}
                   disabled={isSyncing}
@@ -1127,11 +1187,11 @@ export default function BudgetSummary({
                                       <button
                                         onClick={() => {
                                           setAssigningId(txn.id);
-                                          setSelectedBudgetItemId(String(txn.suggestedBudgetItemId));
+                                          setSelectedBudgetItemId(txn.suggestedBudgetItemId!);
                                         }}
                                         className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-primary bg-primary-light rounded-full hover:bg-primary hover:text-white transition-colors"
                                       >
-                                        {getBudgetItemName(txn.suggestedBudgetItemId!)}
+                                        {getBudgetItemName(txn.suggestedBudgetItemId)}
                                       </button>
                                     )}
                                   </div>
