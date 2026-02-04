@@ -47,11 +47,15 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  // Get or create target budget
+  // Get or create target budget (include items to check for duplicates)
   let targetBudget = await db.query.budgets.findFirst({
     where: and(eq(budgets.userId, userId), eq(budgets.month, targetMonth), eq(budgets.year, targetYear)),
     with: {
-      categories: true,
+      categories: {
+        with: {
+          items: true,
+        },
+      },
     },
   });
 
@@ -74,7 +78,11 @@ export async function POST(request: NextRequest) {
     targetBudget = await db.query.budgets.findFirst({
       where: eq(budgets.id, newBudget.id),
       with: {
-        categories: true,
+        categories: {
+          with: {
+            items: true,
+          },
+        },
       },
     });
   }
@@ -90,12 +98,15 @@ export async function POST(request: NextRequest) {
 
   // Copy items from source to target
   for (const sourceCategory of sourceBudget.categories) {
-    let targetCategory = targetBudget.categories.find(
+    const existingTargetCategory = targetBudget.categories.find(
       (c) => c.categoryType === sourceCategory.categoryType
     );
 
+    let targetCategoryId: string;
+    let existingItems: { name: string; recurringPaymentId: string | null }[] = [];
+
     // Create custom category in target if it doesn't exist
-    if (!targetCategory) {
+    if (!existingTargetCategory) {
       const [newCat] = await db.insert(budgetCategories).values({
         budgetId: targetBudget.id,
         categoryType: sourceCategory.categoryType,
@@ -103,17 +114,30 @@ export async function POST(request: NextRequest) {
         emoji: sourceCategory.emoji,
         categoryOrder: sourceCategory.categoryOrder ?? 0,
       }).returning();
-      targetCategory = newCat;
+      targetCategoryId = newCat.id;
+      // New category has no items, so existingItems stays empty
+    } else {
+      targetCategoryId = existingTargetCategory.id;
+      existingItems = existingTargetCategory.items;
     }
 
-    if (targetCategory && sourceCategory.items.length > 0) {
+    if (sourceCategory.items.length > 0) {
       for (const item of sourceCategory.items) {
-        await db.insert(budgetItems).values({
-          categoryId: targetCategory.id,
-          name: item.name,
-          planned: item.planned,
-          order: item.order,
-        });
+        // Check for duplicate by name or by recurringPaymentId
+        const isDuplicate = existingItems.some(existing =>
+          existing.name.toLowerCase() === item.name.toLowerCase() ||
+          (item.recurringPaymentId && existing.recurringPaymentId === item.recurringPaymentId)
+        );
+
+        if (!isDuplicate) {
+          await db.insert(budgetItems).values({
+            categoryId: targetCategoryId,
+            name: item.name,
+            planned: item.planned,
+            order: item.order,
+            recurringPaymentId: item.recurringPaymentId,
+          });
+        }
       }
     }
   }
