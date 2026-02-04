@@ -165,13 +165,17 @@ export async function PUT(request: NextRequest) {
     updateData.merchant = merchant || null;
   }
 
-  const [updated] = await db
+  const result = await db
     .update(transactions)
     .set(updateData)
     .where(eq(transactions.id, id))
     .returning();
 
-  return NextResponse.json(updated);
+  if (result.length === 0) {
+    return NextResponse.json({ error: 'Transaction not found or update failed' }, { status: 404 });
+  }
+
+  return NextResponse.json(result[0]);
 }
 
 // DELETE - Soft delete a transaction
