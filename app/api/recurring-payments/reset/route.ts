@@ -6,8 +6,10 @@ import { RecurringFrequency } from '@/types/budget';
 import { requireAuth, isAuthError } from '@/lib/auth';
 
 // Helper to calculate next due date based on frequency
+// Parse YYYY-MM-DD as local date to avoid UTC shift
 function getNextDueDate(currentDueDate: string, frequency: RecurringFrequency): string {
-  const date = new Date(currentDueDate);
+  const [y, m, d] = currentDueDate.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
 
   switch (frequency) {
     case 'monthly':
@@ -24,7 +26,7 @@ function getNextDueDate(currentDueDate: string, frequency: RecurringFrequency): 
       break;
   }
 
-  return date.toISOString().split('T')[0];
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 // POST /api/recurring-payments/reset

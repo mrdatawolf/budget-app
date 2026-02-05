@@ -17,6 +17,7 @@ import SplitTransactionModal, { ExistingSplit } from "./SplitTransactionModal";
 import { useToast } from "@/contexts/ToastContext";
 import { useUncategorizedCount } from "@/contexts/UncategorizedCountContext";
 import { formatCurrency } from "@/lib/formatCurrency";
+import { formatDateShort, formatDateMonth, formatDateDay, toLocalDateString } from "@/lib/dateHelpers";
 
 interface SelectedBudgetItem {
   item: BudgetItem;
@@ -205,12 +206,7 @@ export default function BudgetSummary({
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
   );
 
-  const formatDate = (dateString: string) => {
-    // Parse as local date to avoid timezone shift (YYYY-MM-DD format)
-    const [year, month, day] = dateString.split("-").map(Number);
-    const date = new Date(year, month - 1, day);
-    return date.toLocaleDateString("en-US", { month: "short", day: "2-digit" });
-  };
+  const formatDate = formatDateShort;
 
   // Fetch uncategorized transactions
   const fetchUncategorized = useCallback(async () => {
@@ -239,11 +235,11 @@ export default function BudgetSummary({
     // 7 days before month start
     const rangeStart = new Date(monthStart);
     rangeStart.setDate(rangeStart.getDate() - 7);
-    const startStr = rangeStart.toISOString().slice(0, 10);
+    const startStr = toLocalDateString(rangeStart);
     // 7 days after month end
     const rangeEnd = new Date(monthEnd);
     rangeEnd.setDate(rangeEnd.getDate() + 7);
-    const endStr = rangeEnd.toISOString().slice(0, 10);
+    const endStr = toLocalDateString(rangeEnd);
 
     return uncategorizedTxns.filter(txn => txn.date >= startStr && txn.date <= endStr);
   }, [uncategorizedTxns, budget.month, budget.year]);
@@ -793,12 +789,10 @@ export default function BudgetSummary({
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-surface-secondary rounded-full flex flex-col items-center justify-center text-xs text-text-secondary">
                       <span>
-                        {new Date(txn.date).toLocaleDateString("en-US", {
-                          month: "short",
-                        })}
+                        {formatDateMonth(txn.date)}
                       </span>
                       <span className="font-semibold">
-                        {new Date(txn.date).getDate()}
+                        {formatDateDay(txn.date)}
                       </span>
                     </div>
                     <div>

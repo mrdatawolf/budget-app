@@ -21,6 +21,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { formatCurrency } from "@/lib/formatCurrency";
+import { formatDateLocale } from "@/lib/dateHelpers";
 
 interface BudgetSectionProps {
   category: BudgetCategory;
@@ -257,7 +258,7 @@ function SortableItem({
               >
                 <div className="flex-1">
                   <span className="text-text-secondary">
-                    {new Date(transaction.date).toLocaleDateString()}
+                    {formatDateLocale(transaction.date)}
                   </span>
                   <span className="ml-3 text-text-primary">
                     {transaction.merchant || transaction.description}
@@ -290,7 +291,7 @@ function SortableItem({
               >
                 <div className="flex-1">
                   <span className="text-text-secondary">
-                    {split.parentDate ? new Date(split.parentDate).toLocaleDateString() : '—'}
+                    {split.parentDate ? formatDateLocale(split.parentDate) : '—'}
                   </span>
                   <span className="ml-3 text-text-primary">
                     {split.description || split.parentMerchant || split.parentDescription || 'Split'}

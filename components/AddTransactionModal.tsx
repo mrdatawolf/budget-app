@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { BudgetItem } from '@/types/budget';
+import { getTodayString } from '@/lib/dateHelpers';
 
 interface LinkedAccount {
   id: string;
@@ -66,7 +67,7 @@ export default function AddTransactionModal({
 }: AddTransactionModalProps) {
   const [type, setType] = useState<'income' | 'expense'>('expense');
   const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(getTodayString());
   const [merchant, setMerchant] = useState('');
   const [linkedAccountId, setLinkedAccountId] = useState<string>('');
   const [budgetItemId, setBudgetItemId] = useState('');
@@ -86,7 +87,7 @@ export default function AddTransactionModal({
       // Reset form for new transaction, using defaults if provided
       setType(defaultType || 'expense');
       setAmount('');
-      setDate(new Date().toISOString().split('T')[0]);
+      setDate(getTodayString());
       setMerchant('');
       setLinkedAccountId('');
       setBudgetItemId(defaultBudgetItemId || '');
@@ -126,7 +127,7 @@ export default function AddTransactionModal({
     // Reset form
     setType('expense');
     setAmount('');
-    setDate(new Date().toISOString().split('T')[0]);
+    setDate(getTodayString());
     setMerchant('');
     setLinkedAccountId('');
     setBudgetItemId('');

@@ -16,9 +16,10 @@ function getMonthsInCycle(frequency: RecurringFrequency): number {
   }
 }
 
-// Helper to calculate days until due
+// Helper to calculate days until due (parse YYYY-MM-DD as local to avoid UTC shift)
 function getDaysUntilDue(nextDueDate: string): number {
-  const due = new Date(nextDueDate);
+  const [y, m, d] = nextDueDate.split('-').map(Number);
+  const due = new Date(y, m - 1, d);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   due.setHours(0, 0, 0, 0);
