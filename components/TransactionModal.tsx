@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Transaction } from '@/types/budget';
+import { getTodayString } from '@/lib/dateHelpers';
 
 interface TransactionModalProps {
   isOpen: boolean;
@@ -20,7 +21,7 @@ export default function TransactionModal({
 }: TransactionModalProps) {
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(getTodayString());
   const [type, setType] = useState<'income' | 'expense'>('expense');
   const [merchant, setMerchant] = useState('');
   const [checkNumber, setCheckNumber] = useState('');
@@ -42,7 +43,7 @@ export default function TransactionModal({
 
     setDescription('');
     setAmount('');
-    setDate(new Date().toISOString().split('T')[0]);
+    setDate(getTodayString());
     setType('expense');
     setMerchant('');
     setCheckNumber('');

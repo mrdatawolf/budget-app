@@ -5,6 +5,7 @@ import Script from 'next/script';
 import { FaUniversity, FaTrash, FaSync, FaFileUpload, FaUpload } from 'react-icons/fa';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useToast } from '@/contexts/ToastContext';
+import { formatTimestamp } from '@/lib/dateHelpers';
 import CsvImportModal from '@/components/csv/CsvImportModal';
 import DatabaseManagement from '@/components/DatabaseManagement';
 import { CsvAccount } from '@/types/csv';
@@ -185,10 +186,7 @@ export default function SettingsPage() {
     }
   };
 
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return 'Never';
-    return new Date(dateString).toLocaleString();
-  };
+  const formatDate = formatTimestamp;
 
   return (
     <DashboardLayout>

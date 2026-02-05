@@ -147,8 +147,9 @@ export async function GET(request: NextRequest) {
     today.setHours(0, 0, 0, 0);
 
     for (const recurring of activeRecurring) {
-      const dueDate = new Date(recurring.nextDueDate);
-      dueDate.setHours(0, 0, 0, 0);
+      // Parse YYYY-MM-DD as local date to avoid UTC shift
+      const [dy, dm, dd] = recurring.nextDueDate.split('-').map(Number);
+      const dueDate = new Date(dy, dm - 1, dd);
 
       if (dueDate < today) {
         // Advance nextDueDate by one frequency period (keep advancing until it's in the future)
@@ -172,11 +173,14 @@ export async function GET(request: NextRequest) {
           }
         }
 
+        // Format as YYYY-MM-DD using local date components
+        const nextStr = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`;
+
         await db.update(recurringPayments)
-          .set({ nextDueDate: next.toISOString().split('T')[0], fundedAmount: '0' })
+          .set({ nextDueDate: nextStr, fundedAmount: '0' })
           .where(eq(recurringPayments.id, recurring.id));
 
-        recurring.nextDueDate = next.toISOString().split('T')[0];
+        recurring.nextDueDate = nextStr;
         recurring.fundedAmount = '0';
       }
     }

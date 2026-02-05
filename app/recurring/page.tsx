@@ -6,6 +6,7 @@ import { FaPlus, FaEdit, FaTrash, FaCheck, FaExclamationTriangle } from 'react-i
 import DashboardLayout from '@/components/DashboardLayout';
 import { RecurringPayment, RecurringFrequency, CategoryType, Budget } from '@/types/budget';
 import { formatCurrency } from '@/lib/formatCurrency';
+import { formatDateLong } from '@/lib/dateHelpers';
 import { transformDbBudgetToAppBudget } from '@/lib/budgetHelpers';
 
 const frequencyLabels: Record<RecurringFrequency, string> = {
@@ -204,13 +205,7 @@ function RecurringPage() {
   const upcomingPayments = payments.filter(p => p.daysUntilDue <= 60 && p.daysUntilDue >= 0);
 
   // Format date for display
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
+  const formatDate = formatDateLong;
 
   // Format currency for display
   const fmtCurrency = (amount: number) => `$${formatCurrency(amount)}`;

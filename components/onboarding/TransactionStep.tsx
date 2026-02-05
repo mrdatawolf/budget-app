@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { formatCurrency } from '@/lib/formatCurrency';
+import { getTodayString } from '@/lib/dateHelpers';
 
 interface SuggestedTransaction {
   description: string;
@@ -33,7 +34,7 @@ interface TransactionStepProps {
 export default function TransactionStep({ createdItems, onNext, onBack }: TransactionStepProps) {
   const [type, setType] = useState<'expense' | 'income'>('expense');
   const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(getTodayString());
   const [description, setDescription] = useState('');
   const [budgetItemId, setBudgetItemId] = useState('');
   const [saving, setSaving] = useState(false);
