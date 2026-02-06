@@ -30,6 +30,23 @@ const frequencyMonths: Record<RecurringFrequency, number> = {
   'annually': 12,
 };
 
+// Days in each cycle (for warning threshold calculation)
+const frequencyCycleDays: Record<RecurringFrequency, number> = {
+  'weekly': 7,
+  'bi-weekly': 14,
+  'monthly': 30,
+  'quarterly': 90,
+  'semi-annually': 182,
+  'annually': 365,
+};
+
+// Get warning threshold: warn when 75% of cycle has passed (25% remaining)
+// e.g., weekly: 7 - floor(7*0.75) = 7 - 5 = 2 days remaining triggers warning
+const getWarningThreshold = (frequency: RecurringFrequency): number => {
+  const cycleDays = frequencyCycleDays[frequency];
+  return cycleDays - Math.floor(cycleDays * 0.75);
+};
+
 // Default labels for built-in categories (used as fallback)
 const defaultCategoryLabels: Record<string, string> = {
   'income': 'Income',
@@ -243,21 +260,25 @@ function RecurringPage() {
                 <h2 className="font-semibold text-text-primary">Due Within 60 Days</h2>
               </div>
               <div className="space-y-2">
-                {upcomingPayments.map(payment => (
-                  <div key={payment.id} className="flex items-center justify-between text-sm">
-                    <span className="text-text-primary">{payment.name}</span>
-                    <div className="flex items-center gap-4">
-                      <span className="text-text-secondary">{fmtCurrency(payment.amount)}</span>
-                      <span className={`font-medium ${payment.daysUntilDue <= 7 ? 'text-danger' : 'text-warning'}`}>
-                        {payment.daysUntilDue === 0
-                          ? 'Due today'
-                          : payment.daysUntilDue === 1
-                          ? 'Due tomorrow'
-                          : `Due in ${payment.daysUntilDue} days`}
-                      </span>
+                {upcomingPayments.map(payment => {
+                  const warningThreshold = getWarningThreshold(payment.frequency);
+                  const shouldWarn = payment.daysUntilDue <= warningThreshold;
+                  return (
+                    <div key={payment.id} className="flex items-center justify-between text-sm">
+                      <span className="text-text-primary">{payment.name}</span>
+                      <div className="flex items-center gap-4">
+                        <span className="text-text-secondary">{fmtCurrency(payment.amount)}</span>
+                        <span className={`font-medium ${shouldWarn ? 'text-danger' : 'text-warning'}`}>
+                          {payment.daysUntilDue === 0
+                            ? 'Due today'
+                            : payment.daysUntilDue === 1
+                            ? 'Due tomorrow'
+                            : `Due in ${payment.daysUntilDue} days`}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -376,85 +397,126 @@ function RecurringPage() {
               </button>
             </div>
           ) : (
-            <div className="space-y-4">
-              {payments.map(payment => (
-                <div key={payment.id} className="bg-surface rounded-lg shadow p-5">
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold text-text-primary">{payment.name}</h3>
-                        {payment.categoryType && (
-                          <span className="px-2 py-0.5 text-xs font-medium bg-surface-secondary text-text-secondary rounded">
-                            {availableCategories[payment.categoryType] || defaultCategoryLabels[payment.categoryType] || payment.categoryType}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm text-text-secondary">
-                        {frequencyLabels[payment.frequency]} • Due {formatDate(payment.nextDueDate)}
-                        {payment.daysUntilDue <= 7 && payment.daysUntilDue >= 0 && (
-                          <span className="ml-2 text-danger font-medium">
-                            ({payment.daysUntilDue === 0 ? 'Today!' : `${payment.daysUntilDue} days`})
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => startEditing(payment)}
-                        className="p-2 text-text-tertiary hover:text-text-secondary transition-colors"
-                        title="Edit"
-                      >
-                        <FaEdit size={14} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(payment.id)}
-                        className="p-2 text-text-tertiary hover:text-danger transition-colors"
-                        title="Delete"
-                      >
-                        <FaTrash size={14} />
-                      </button>
-                    </div>
-                  </div>
+            <>
+              {/* Separate income and expense payments */}
+              {(() => {
+                const incomePayments = payments.filter(p => p.categoryType === 'income');
+                const expensePayments = payments.filter(p => p.categoryType !== 'income');
 
-                  {/* Funding Progress */}
-                  <div>
-                    {payment.isPaid ? (
-                      <div className="flex items-center gap-2 py-2">
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-success-light text-success rounded-full">
-                          <FaCheck size={12} />
-                          <span className="text-sm font-medium">Paid</span>
-                        </div>
-                        <span className="text-sm text-text-secondary">
-                          {fmtCurrency(payment.fundedAmount)} of {fmtCurrency(payment.displayTarget)}
-                        </span>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex items-center justify-between text-sm mb-1">
-                          <span className="text-text-secondary">
-                            {fmtCurrency(payment.fundedAmount)} of {fmtCurrency(payment.displayTarget)}
-                          </span>
-                          <span className="font-medium text-text-secondary">
-                            {payment.percentFunded.toFixed(0)}% funded
-                          </span>
-                        </div>
-                        <div className="h-2 bg-surface-secondary rounded-full overflow-hidden">
-                          <div
-                            className="h-full transition-all bg-primary"
-                            style={{ width: `${Math.min(payment.percentFunded, 100)}%` }}
-                          />
-                        </div>
-                        {payment.frequency !== 'monthly' && (
-                          <p className="text-xs text-text-secondary mt-1">
-                            Monthly contribution: {fmtCurrency(payment.monthlyContribution)}
+                const renderPaymentCard = (payment: RecurringPayment) => {
+                  const warningThreshold = getWarningThreshold(payment.frequency);
+                  const shouldWarn = payment.daysUntilDue >= 0 && payment.daysUntilDue <= warningThreshold;
+
+                  return (
+                    <div key={payment.id} className="bg-surface rounded-lg shadow p-5">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold text-text-primary">{payment.name}</h3>
+                            {payment.categoryType && (
+                              <span className="px-2 py-0.5 text-xs font-medium bg-surface-secondary text-text-secondary rounded">
+                                {availableCategories[payment.categoryType] || defaultCategoryLabels[payment.categoryType] || payment.categoryType}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-text-secondary">
+                            {frequencyLabels[payment.frequency]} • Due {formatDate(payment.nextDueDate)}
+                            {payment.daysUntilDue >= 0 && (
+                              <span className={`ml-2 font-medium ${shouldWarn ? 'text-danger' : 'text-text-secondary'}`}>
+                                ({payment.daysUntilDue === 0 ? 'Today!' : `${payment.daysUntilDue} days`})
+                              </span>
+                            )}
                           </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => startEditing(payment)}
+                            className="p-2 text-text-tertiary hover:text-text-secondary transition-colors"
+                            title="Edit"
+                          >
+                            <FaEdit size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(payment.id)}
+                            className="p-2 text-text-tertiary hover:text-danger transition-colors"
+                            title="Delete"
+                          >
+                            <FaTrash size={14} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Funding Progress */}
+                      <div>
+                        {payment.isPaid ? (
+                          <div className="flex items-center gap-2 py-2">
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-success-light text-success rounded-full">
+                              <FaCheck size={12} />
+                              <span className="text-sm font-medium">Paid</span>
+                            </div>
+                            <span className="text-sm text-text-secondary">
+                              {fmtCurrency(payment.fundedAmount)} of {fmtCurrency(payment.displayTarget)}
+                            </span>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-center justify-between text-sm mb-1">
+                              <span className="text-text-secondary">
+                                {fmtCurrency(payment.fundedAmount)} of {fmtCurrency(payment.displayTarget)}
+                              </span>
+                              <span className="font-medium text-text-secondary">
+                                {payment.percentFunded.toFixed(0)}% funded
+                              </span>
+                            </div>
+                            <div className="h-2 bg-surface-secondary rounded-full overflow-hidden">
+                              <div
+                                className="h-full transition-all bg-primary"
+                                style={{ width: `${Math.min(payment.percentFunded, 100)}%` }}
+                              />
+                            </div>
+                            {payment.frequency !== 'monthly' && (
+                              <p className="text-xs text-text-secondary mt-1">
+                                Monthly contribution: {fmtCurrency(payment.monthlyContribution)}
+                              </p>
+                            )}
+                          </>
                         )}
-                      </>
+                      </div>
+                    </div>
+                  );
+                };
+
+                return (
+                  <div className="space-y-6">
+                    {/* Income Section */}
+                    {incomePayments.length > 0 && (
+                      <div>
+                        <h2 className="text-lg font-semibold text-text-primary mb-3 flex items-center gap-2">
+                          <span className="text-success">💰</span> Income
+                        </h2>
+                        <div className="space-y-4">
+                          {incomePayments.map(renderPaymentCard)}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Expenses Section */}
+                    {expensePayments.length > 0 && (
+                      <div>
+                        {incomePayments.length > 0 && (
+                          <h2 className="text-lg font-semibold text-text-primary mb-3 flex items-center gap-2">
+                            <span>💸</span> Expenses
+                          </h2>
+                        )}
+                        <div className="space-y-4">
+                          {expensePayments.map(renderPaymentCard)}
+                        </div>
+                      </div>
                     )}
                   </div>
-                </div>
-              ))}
-            </div>
+                );
+              })()}
+            </>
           )}
         </div>
       </div>
