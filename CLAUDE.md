@@ -7,7 +7,7 @@ This document contains context for Claude AI to continue development on this bud
 A zero-based budget tracking application built with Next.js, TypeScript, and Tailwind CSS. The app features bank account integration via Teller API for automatic transaction imports.
 
 **Current Version:** v1.9.0
-**Last Session:** 2026-02-04
+**Last Session:** 2026-02-06
 
 ## Instructions for Claude
 
@@ -786,12 +786,12 @@ DATABASE_URL=postgresql://postgres.xxx:password@aws-0-us-east-1.pooler.supabase.
 ## Session Handoff Notes
 
 Last session ended after:
-1. Built complete native iOS app with SwiftUI
-2. Fixed auth token timing, month indexing, date parsing, and actual calculations
-3. App successfully loads budget data with transactions and correct spent amounts
+1. Fixed recurring income display bug (bi-weekly income was showing wrong month's data and wrong target amount)
+2. Added PGlite HMR stability fix using global state to prevent database corruption in dev mode
+3. Database restore from backup worked successfully
 
-The iOS app is functional for viewing budgets. Next steps would be adding edit/create functionality.
-The app is in a stable state with v1.4.0 changes applied.
+The local-first architecture with PGlite is functional but may still have edge cases with database corruption.
+Next steps would be completing sync engine (Phase 4) or continuing iOS app development.
 
 ## Branch Goal: Local-First Architecture (v1.5.0)
 
@@ -860,16 +860,24 @@ Migrate from cloud-only (Supabase PostgreSQL) to a **local-first architecture** 
 
 ---
 
-### Phase 2: Add PGlite Local Database Layer 🔲 PENDING
+### Phase 2: Add PGlite Local Database Layer ✅ COMPLETE
 **Goal:** Add PGlite as the local database using the same schema as cloud.
 
-**Planned work:**
-- Install `@electric-sql/pglite`
-- Create `db/local.ts` - PGlite connection with IndexedDB persistence
-- Create `db/cloud.ts` - Rename/refactor existing cloud connection
-- Update `db/index.ts` - Export local DB as primary, cloud DB on-demand
+**Completed work:**
+- Installed `@electric-sql/pglite`
+- Created `db/local.ts` - PGlite connection with file system persistence (IndexedDB planned for browser)
+- Created `db/cloud.ts` - Cloud connection for sync
+- Updated `db/index.ts` - Exports local DB as primary via `getDb()`
+- Added HMR stability fix using `globalThis` to persist connection across hot reloads in dev mode
+- Added backup/restore system (`createBackup()`, `restoreFromBackup()`, `listBackups()`)
+- Added database status helpers (`getDbStatus()`, `isDbInitialized()`, `resetDbError()`)
 
-**Key benefit:** PGlite is PostgreSQL, so same schema works for both - no type conversion needed.
+**Key files:**
+- `db/local.ts` - PGlite singleton with global state for dev mode HMR stability
+- `db/cloud.ts` - Supabase PostgreSQL connection
+- `db/index.ts` - Re-exports `getLocalDb` as `getDb`
+
+**Environment variable:** `PGLITE_DB_LOCATION` (default: `./data/budget-local`)
 
 ---
 
@@ -951,3 +959,39 @@ NEXT_PUBLIC_SYNC_INTERVAL_MS=300000  # 5 minutes default
 ## Reference
 
 Full migration plan: [LOCAL_FIRST_MIGRATION_PLAN.md](LOCAL_FIRST_MIGRATION_PLAN.md)
+
+---
+
+## Bug Fixes (2026-02-06)
+
+### Recurring Income Display Fix
+**Problem:** Bi-weekly income (e.g., "Biztech") was showing `$3,897.27 of $1,937.62` in February instead of `$0 of $3,875.24`.
+
+**Root causes:**
+1. January transactions were being summed across all months (should only show current month for income)
+2. Target amount was using per-paycheck amount ($1,937.62) instead of monthly equivalent ($3,875.24)
+
+**Fix:**
+- Added `displayTarget` field to `RecurringPayment` type — monthly equivalent for income, cycle total for expenses
+- Added `getMonthlyEquivalent()` helper: weekly × 4, bi-weekly × 2, monthly × 1, quarterly ÷ 3, etc.
+- Changed condition from `if (isMonthly)` to `if (isMonthly || isIncome)` when filtering transactions
+- Updated UI to show `displayTarget` instead of `amount`
+- Removed filter excluding "income" from recurring payment category dropdown
+
+**Files modified:**
+- `types/budget.ts` — added `displayTarget` field
+- `app/api/recurring-payments/route.ts` — income-aware logic + `getMonthlyEquivalent()`
+- `app/api/budgets/copy/route.ts` — added weekly/bi-weekly to `getMonthlyContribution()`
+- `app/recurring/page.tsx` — display `displayTarget`, allow income category
+
+**Note:** Weekly/bi-weekly multipliers use simple approximations (×4, ×2) rather than precise annual averages (52/12, 26/12). This matches user expectations and treats "extra" paychecks as buffer.
+
+### PGlite HMR Corruption Fix
+**Problem:** Database corruption ("Aborted()") after editing budget items in dev mode, requiring restore from backup.
+
+**Root cause:** Next.js HMR creates new module instances, but PGlite connections from previous instances aren't properly closed, leaving the database in an inconsistent state.
+
+**Fix:** Added global state (`globalThis.__pgliteClient`, etc.) to persist the PGlite connection across HMR reloads in development mode. Production continues to use module-level state.
+
+**Files modified:**
+- `db/local.ts` — added `globalThis` accessors for dev mode, helper functions (`getPgliteClient`, `setPgliteClient`, etc.)
