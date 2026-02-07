@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { formatCurrency } from '@/lib/formatCurrency';
+import { api } from '@/lib/api-client';
 
 interface BufferStepProps {
   budgetId: string | null;
@@ -29,20 +30,8 @@ export default function BufferStep({ budgetId, onNext, onBack }: BufferStepProps
 
     setSaving(true);
     try {
-      const res = await fetch('/api/budgets', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: budgetId, buffer: numericValue }),
-      });
-
-      if (!res.ok) throw new Error('Failed to save buffer');
-
-      await fetch('/api/onboarding', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ step: 4 }),
-      });
-
+      await api.budget.update(budgetId, { buffer: numericValue });
+      await api.onboarding.updateStep(4);
       onNext();
     } catch {
       setError('Failed to save. Please try again.');

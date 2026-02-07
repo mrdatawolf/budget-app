@@ -12,6 +12,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { Budget, Transaction, BudgetItem, DEFAULT_CATEGORIES } from "@/types/budget";
 import { transformDbBudgetToAppBudget } from "@/lib/budgetHelpers";
 import { FaColumns, FaTimes, FaSearch } from "react-icons/fa";
+import { api } from "@/lib/api-client";
 
 const EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
   { label: 'Finance', emojis: ['💰', '💵', '💳', '🏦', '💎', '🪙', '📈', '📉', '💸', '🧾', '🏧'] },
@@ -70,9 +71,8 @@ function Home() {
   useEffect(() => {
     async function checkOnboarding() {
       try {
-        const res = await fetch('/api/onboarding');
-        const { completed } = await res.json();
-        if (!completed) {
+        const status = await api.onboarding.getStatus();
+        if (!status?.completed) {
           window.location.href = '/onboarding';
           return;
         }
@@ -115,11 +115,8 @@ function Home() {
 
   const fetchLinkedAccounts = useCallback(async () => {
     try {
-      const response = await fetch('/api/teller/accounts');
-      if (response.ok) {
-        const data = await response.json();
-        setLinkedAccounts(data);
-      }
+      const data = await api.teller.listAccounts();
+      setLinkedAccounts(data as LinkedAccount[]);
     } catch (error) {
       console.error('Error fetching linked accounts:', error);
     }
@@ -134,8 +131,7 @@ function Home() {
       setLoading(true);
     }
     try {
-      const response = await fetch(`/api/budgets?month=${m}&year=${y}`);
-      const data = await response.json();
+      const data = await api.budget.get(m, y);
       const transformedBudget = transformDbBudgetToAppBudget(data);
       setBudget(transformedBudget);
     } catch (error) {
@@ -202,17 +198,17 @@ function Home() {
     merchant?: string;
   }) => {
     try {
-      const response = await fetch('/api/transactions', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(transaction),
+      await api.transaction.update(transaction.id, {
+        budgetItemId: transaction.budgetItemId,
+        date: transaction.date,
+        description: transaction.description,
+        amount: transaction.amount,
+        type: transaction.type,
+        merchant: transaction.merchant,
       });
-
-      if (response.ok) {
-        setTransactionToEdit(null);
-        setIsEditModalOpen(false);
-        refreshBudget();
-      }
+      setTransactionToEdit(null);
+      setIsEditModalOpen(false);
+      refreshBudget();
     } catch (error) {
       console.error('Error editing transaction:', error);
     }
@@ -220,15 +216,10 @@ function Home() {
 
   const handleDeleteFromModal = async (id: string) => {
     try {
-      const response = await fetch(`/api/transactions?id=${id}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        setTransactionToEdit(null);
-        setIsEditModalOpen(false);
-        refreshBudget();
-      }
+      await api.transaction.delete(id);
+      setTransactionToEdit(null);
+      setIsEditModalOpen(false);
+      refreshBudget();
     } catch (error) {
       console.error('Error deleting transaction:', error);
     }
@@ -242,36 +233,24 @@ function Home() {
   const handleAddGroup = async () => {
     if (!newGroupName.trim() || !budget?.id) return;
     try {
-      const response = await fetch('/api/budget-categories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          budgetId: budget.id,
-          name: newGroupName.trim(),
-          emoji: newGroupEmoji,
-        }),
-      });
-      if (response.ok) {
-        setIsAddGroupOpen(false);
-        setNewGroupName('');
-        setNewGroupEmoji('📋');
-        refreshBudget();
-      } else {
-        const err = await response.json();
-        alert(err.error || 'Failed to create category');
-      }
+      await api.category.create(budget.id, newGroupName.trim(), newGroupEmoji);
+      setIsAddGroupOpen(false);
+      setNewGroupName('');
+      setNewGroupEmoji('📋');
+      refreshBudget();
     } catch (error) {
       console.error('Error creating category:', error);
+      if (error instanceof Error) {
+        alert(error.message || 'Failed to create category');
+      }
     }
   };
 
   const handleDeleteCategory = async (dbId: string) => {
     if (!confirm('Delete this category? All its items and transactions will be removed.')) return;
     try {
-      const response = await fetch(`/api/budget-categories?id=${dbId}`, { method: 'DELETE' });
-      if (response.ok) {
-        refreshBudget();
-      }
+      await api.category.delete(dbId);
+      refreshBudget();
     } catch (error) {
       console.error('Error deleting category:', error);
     }
@@ -311,22 +290,8 @@ function Home() {
     const sourceYear = srcYear ?? copySourceYear;
 
     try {
-      const response = await fetch('/api/budgets/copy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sourceMonth,
-          sourceYear,
-          targetMonth: month,
-          targetYear: year,
-        }),
-      });
-
-      if (response.ok) {
-        refreshBudget();
-      } else {
-        console.error('Error copying budget');
-      }
+      await api.budget.copy(sourceMonth, sourceYear, month, year);
+      refreshBudget();
     } catch (error) {
       console.error('Error copying budget:', error);
     }
@@ -564,12 +529,10 @@ function Home() {
                             onClick={async () => {
                               setIsResetting(true);
                               try {
-                                const res = await fetch('/api/budgets/reset', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ budgetId: budget.id, mode: resetMode }),
-                                });
-                                if (res.ok) { refreshBudget(); setIsResetBudgetOpen(false); setResetMode(null); }
+                                await api.budget.reset(budget.id, resetMode!);
+                                refreshBudget();
+                                setIsResetBudgetOpen(false);
+                                setResetMode(null);
                               } catch (e) { console.error('Reset error:', e); }
                               setIsResetting(false);
                             }}

@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { formatCurrency } from '@/lib/formatCurrency';
+import { api } from '@/lib/api-client';
 
 interface CreatedItem {
   id: number;
@@ -19,11 +20,7 @@ interface CompleteStepProps {
 export default function CompleteStep({ buffer, createdItems, addedTransaction }: CompleteStepProps) {
   useEffect(() => {
     // Mark onboarding as complete
-    fetch('/api/onboarding', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'complete' }),
-    });
+    api.onboarding.finish('complete');
   }, []);
 
   const totalPlanned = createdItems.reduce((sum, item) => sum + item.planned, 0);

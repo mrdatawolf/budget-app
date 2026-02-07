@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { FaDatabase, FaRedo, FaTrash, FaCloud, FaHistory, FaCheck, FaExclamationTriangle, FaSave } from 'react-icons/fa';
+import { api } from '@/lib/api-client';
 
 interface DbStatus {
   initialized: boolean;
@@ -33,11 +34,8 @@ export default function DatabaseManagement({ onDatabaseChange }: Props) {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const response = await fetch('/api/database');
-      if (response.ok) {
-        const data = await response.json();
-        setDbInfo(data);
-      }
+      const data = await api.database.getStatus() as DbInfo;
+      setDbInfo(data);
     } catch (error) {
       console.error('Failed to fetch database status:', error);
     } finally {
@@ -49,19 +47,118 @@ export default function DatabaseManagement({ onDatabaseChange }: Props) {
     fetchStatus();
   }, [fetchStatus]);
 
-  const performAction = async (action: string, backupPath?: string) => {
-    setActionInProgress(action);
+  const handleRetry = async () => {
+    setActionInProgress('retry');
     setMessage(null);
-
     try {
+      // Retry is just fetching status again
+      await fetchStatus();
+      setMessage({ type: 'success', text: 'Connection retried' });
+      onDatabaseChange?.();
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'An error occurred',
+      });
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleBackup = async () => {
+    setActionInProgress('backup');
+    setMessage(null);
+    try {
+      const result = await api.database.backup();
+      setMessage({ type: 'success', text: `Backup created: ${result.backupPath}` });
+      await fetchStatus();
+      onDatabaseChange?.();
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'An error occurred',
+      });
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm('This will delete your local database. A backup will be created first. Continue?')) {
+      return;
+    }
+    setActionInProgress('delete');
+    setMessage(null);
+    try {
+      const result = await api.database.delete();
+      setMessage({ type: 'success', text: `Database deleted. Backup saved to: ${result.backupPath}` });
+      await fetchStatus();
+      onDatabaseChange?.();
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'An error occurred',
+      });
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleRestore = async (backupPath: string) => {
+    if (!confirm('This will replace your current database with the backup. Continue?')) {
+      return;
+    }
+    setActionInProgress('restore');
+    setMessage(null);
+    try {
+      await api.database.restore(backupPath);
+      setMessage({ type: 'success', text: 'Database restored from backup' });
+      await fetchStatus();
+      onDatabaseChange?.();
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'An error occurred',
+      });
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleDeleteBackup = async (backupPath: string) => {
+    if (!confirm('Delete this backup? This cannot be undone.')) {
+      return;
+    }
+    setActionInProgress('deleteBackup');
+    setMessage(null);
+    try {
+      await api.database.deleteBackup(backupPath);
+      setMessage({ type: 'success', text: 'Backup deleted' });
+      await fetchStatus();
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'An error occurred',
+      });
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleSyncFromCloud = async () => {
+    if (!confirm('This will replace your local database with data from the cloud. Your current local data will be backed up first. Continue?')) {
+      return;
+    }
+    setActionInProgress('syncFromCloud');
+    setMessage(null);
+    try {
+      // syncFromCloud doesn't have an api method yet, use raw fetch
       const response = await fetch('/api/database', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, backupPath }),
+        body: JSON.stringify({ action: 'syncFromCloud' }),
       });
-
       const data = await response.json();
-
       if (data.success) {
         setMessage({ type: 'success', text: data.message });
         await fetchStatus();
@@ -78,34 +175,6 @@ export default function DatabaseManagement({ onDatabaseChange }: Props) {
       setActionInProgress(null);
     }
   };
-
-  const handleRetry = () => performAction('retry');
-  const handleDelete = async () => {
-    if (!confirm('This will delete your local database. A backup will be created first. Continue?')) {
-      return;
-    }
-    await performAction('delete');
-  };
-  const handleRestore = (backupPath: string) => {
-    if (!confirm('This will replace your current database with the backup. Continue?')) {
-      return;
-    }
-    performAction('restore', backupPath);
-  };
-  const handleDeleteBackup = (backupPath: string) => {
-    if (!confirm('Delete this backup? This cannot be undone.')) {
-      return;
-    }
-    performAction('deleteBackup', backupPath);
-  };
-  const handleSyncFromCloud = async () => {
-    if (!confirm('This will replace your local database with data from the cloud. Your current local data will be backed up first. Continue?')) {
-      return;
-    }
-    await performAction('syncFromCloud');
-  };
-
-  const handleBackup = () => performAction('backup');
 
   const formatTimestamp = (timestamp: string) => {
     // Format: 2026-02-04T19-36-10-040Z -> local time string

@@ -6,8 +6,8 @@ This document contains context for Claude AI to continue development on this bud
 
 A zero-based budget tracking application built with Next.js, TypeScript, and Tailwind CSS. The app features bank account integration via Teller API for automatic transaction imports.
 
-**Current Version:** v1.9.0
-**Last Session:** 2026-02-06
+**Current Version:** v2.0.0-alpha (Client-Server Separation in progress)
+**Last Session:** 2026-02-07
 
 ## Instructions for Claude
 
@@ -17,13 +17,14 @@ A zero-based budget tracking application built with Next.js, TypeScript, and Tai
 
 ## Tech Stack
 
-- **Framework:** Next.js 16.x (App Router)
+- **Architecture:** Monorepo (pnpm workspaces) — client-server separation in progress
+- **Framework:** Next.js 16.x (App Router) for client, Hono for API server
 - **Language:** TypeScript
 - **Styling:** Tailwind CSS
 - **ORM:** Drizzle ORM
-- **Database:** Supabase (PostgreSQL) — migrated from SQLite in v1.4.0
-- **Authentication:** Clerk (@clerk/nextjs)
-- **Bank Integration:** Teller API
+- **Database:** PGlite (local PostgreSQL) + Supabase (cloud sync)
+- **Authentication:** Clerk (@clerk/nextjs) — used for cloud sync, implicit local user otherwise
+- **Bank Integration:** Teller API (mTLS)
 - **Mobile:** Capacitor (live server mode) + Native iOS (SwiftUI)
 - **Charts:** D3.js + d3-sankey
 - **Icons:** react-icons (FaXxx from react-icons/fa only)
@@ -785,13 +786,124 @@ DATABASE_URL=postgresql://postgres.xxx:password@aws-0-us-east-1.pooler.supabase.
 
 ## Session Handoff Notes
 
-Last session ended after:
-1. Fixed recurring income display bug (bi-weekly income was showing wrong month's data and wrong target amount)
-2. Added PGlite HMR stability fix using global state to prevent database corruption in dev mode
-3. Database restore from backup worked successfully
+Last session (2026-02-07) completed **Phase 1** of client-server separation and started **Phase 2**:
 
-The local-first architecture with PGlite is functional but may still have edge cases with database corruption.
-Next steps would be completing sync engine (Phase 4) or continuing iOS app development.
+### Completed
+1. **Monorepo structure** with pnpm workspaces
+2. **Shared package** (`packages/shared/`) with types, schema, and db utilities
+3. **Hono API server** (`packages/server/`) with health endpoint and auth middleware
+4. **Centralized API client** (`lib/api-client.ts`) with typed methods for all 20 endpoints
+
+### Next Steps
+- Phase 2: Update 14 client files to use `api.*` methods (replace raw `fetch()` calls)
+- Phase 3: Migrate 20 API routes from Next.js to Hono
+- Phase 4: Create embedded server manager for local mode
+- Phase 5: Implement Clerk JWT verification for remote mode
+- Phase 6: Update build scripts and installer
+
+### Test Commands
+```bash
+pnpm server:dev    # Start Hono server on port 3001
+curl http://localhost:3001/health   # Verify server is running
+```
+
+---
+
+## Client-Server Separation (v2.0.0)
+
+### Goal
+Split the app into 3 decoupled parts:
+1. **Client** - Next.js frontend with configurable SERVER_URI
+2. **API Server** - Standalone Hono server that can run embedded (local) or remote
+3. **Database** - PGlite (local) or Supabase (cloud)
+
+### Architecture
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    SERVER_URI Config                         │
+│  localhost/127.0.0.1 → Embedded    Other → Remote HTTP      │
+└─────────────────────────────────────────────────────────────┘
+         │                                    │
+         ▼                                    ▼
+┌─────────────────┐                  ┌─────────────────┐
+│ Client spawns   │                  │ Client calls    │
+│ local API server│                  │ remote server   │
+│ as child process│                  │ directly        │
+└────────┬────────┘                  └────────┬────────┘
+         │                                    │
+         ▼                                    ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      API Server (Hono)                       │
+│  - 20 route handlers (migrating from Next.js)               │
+│  - Auth middleware (local: implicit, remote: JWT)           │
+│  - Teller mTLS client                                       │
+└─────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                        Database                              │
+│  PGlite (local file) ←──or──→ Supabase (cloud PostgreSQL)   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### New Directory Structure
+```
+budget-app/
+├── packages/
+│   ├── shared/                    # Shared code (types, schema, db)
+│   │   ├── src/
+│   │   │   ├── types/             # TypeScript interfaces
+│   │   │   ├── db/                # PGlite and cloud connections
+│   │   │   ├── schema.ts          # Drizzle schema
+│   │   │   └── index.ts
+│   │   └── package.json
+│   │
+│   └── server/                    # Standalone Hono API server
+│       ├── src/
+│       │   ├── index.ts           # Entry point with health check
+│       │   ├── routes/            # API route handlers (migrating)
+│       │   └── middleware/auth.ts # Auth middleware
+│       └── package.json
+│
+├── lib/
+│   └── api-client.ts              # NEW: Centralized API client
+│
+├── pnpm-workspace.yaml            # Workspace config
+└── ... (existing Next.js app)
+```
+
+### Key Files
+- `packages/shared/src/types/` — Budget, Transaction, RecurringPayment, etc.
+- `packages/shared/src/db/` — getDb(), getLocalDb(), getCloudDb()
+- `packages/shared/src/schema.ts` — Drizzle schema
+- `packages/server/src/index.ts` — Hono server entry point
+- `packages/server/src/middleware/auth.ts` — Dual-mode auth (local/remote)
+- `lib/api-client.ts` — Typed API client with all endpoint methods
+
+### Environment Variables
+```env
+# Client
+NEXT_PUBLIC_SERVER_URI=http://localhost:3001  # or https://api.example.com
+
+# Server
+PORT=3001
+PGLITE_DB_LOCATION=./data/budget-local
+DATABASE_URL=postgresql://...  # For cloud sync
+TELLER_CERTIFICATE_PATH=./certificates/certificate.pem
+TELLER_PRIVATE_KEY_PATH=./certificates/private_key.pem
+CLERK_SECRET_KEY=sk_test_...  # Remote mode only
+```
+
+### Confirmed Decisions
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| API Framework | **Hono** | Web-standard Request/Response, tiny bundle, TypeScript-first |
+| Codebase Structure | **Monorepo** | packages/client, packages/server, packages/shared |
+| Migration Strategy | **Clean break** | Remove Next.js API routes after migrating to Hono |
+| Package Manager | **pnpm** | Efficient, good monorepo support |
+| Auth Token | **Clerk JWT** | Already integrated, proven |
+
+---
 
 ## Branch Goal: Local-First Architecture (v1.5.0)
 

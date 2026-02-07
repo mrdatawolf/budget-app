@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { formatCurrency } from '@/lib/formatCurrency';
+import { api } from '@/lib/api-client';
 
 interface CreatedItem {
   id: number;
@@ -84,14 +85,7 @@ export default function ItemsStep({ categories, onNext, onBack, createdItems, se
     setSaving(true);
     setError('');
     try {
-      const res = await fetch('/api/budget-items', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ categoryId, name: itemName.trim(), planned }),
-      });
-
-      if (!res.ok) throw new Error('Failed to create item');
-      const data = await res.json();
+      const data = await api.item.create(categoryId.toString(), itemName.trim(), planned) as { id: number };
 
       setCreatedItems(prev => [...prev, {
         id: data.id,
@@ -109,11 +103,7 @@ export default function ItemsStep({ categories, onNext, onBack, createdItems, se
   };
 
   const handleNext = async () => {
-    await fetch('/api/onboarding', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ step: 5 }),
-    });
+    await api.onboarding.updateStep(5);
     onNext();
   };
 

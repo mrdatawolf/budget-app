@@ -22,6 +22,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { formatCurrency } from "@/lib/formatCurrency";
 import { formatDateLocale } from "@/lib/dateHelpers";
+import { api } from "@/lib/api-client";
 
 interface BudgetSectionProps {
   category: BudgetCategory;
@@ -361,21 +362,10 @@ export default function BudgetSection({
     }
 
     try {
-      const response = await fetch("/api/budget-items", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          categoryId: category.dbId,
-          name: newItemName,
-          planned: 0,
-        }),
-      });
-
-      if (response.ok) {
-        setNewItemName("");
-        setIsAddingItem(false);
-        onRefresh();
-      }
+      await api.item.create(category.dbId, newItemName, 0);
+      setNewItemName("");
+      setIsAddingItem(false);
+      onRefresh();
     } catch (error) {
       console.error("Error adding item:", error);
     }
@@ -383,14 +373,7 @@ export default function BudgetSection({
 
   const updateItemPlanned = async (itemId: string, value: number) => {
     try {
-      await fetch("/api/budget-items", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: itemId,
-          planned: value,
-        }),
-      });
+      await api.item.update(itemId, { planned: value });
       onRefresh();
     } catch (error) {
       console.error("Error updating item:", error);
@@ -400,14 +383,7 @@ export default function BudgetSection({
   const updateItemName = async (itemId: string, name: string) => {
     if (!name.trim()) return;
     try {
-      await fetch("/api/budget-items", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: itemId,
-          name: name.trim(),
-        }),
-      });
+      await api.item.update(itemId, { name: name.trim() });
       onRefresh();
     } catch (error) {
       console.error("Error updating item name:", error);
@@ -416,14 +392,7 @@ export default function BudgetSection({
 
   const uncategorizeTransaction = async (transactionId: string) => {
     try {
-      await fetch("/api/transactions", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: transactionId,
-          budgetItemId: null,
-        }),
-      });
+      await api.transaction.update(transactionId, { budgetItemId: null });
       onRefresh();
     } catch (error) {
       console.error("Error uncategorizing transaction:", error);
@@ -440,13 +409,8 @@ export default function BudgetSection({
     setEditingValues(newValues);
 
     try {
-      const response = await fetch(`/api/budget-items?id=${itemId}`, {
-        method: "DELETE",
-      });
-
-      if (response.ok) {
-        onRefresh();
-      }
+      await api.item.delete(itemId);
+      onRefresh();
     } catch (error) {
       console.error("Error deleting item:", error);
     }

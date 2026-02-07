@@ -8,6 +8,7 @@ import { RecurringPayment, RecurringFrequency, CategoryType, Budget } from '@/ty
 import { formatCurrency } from '@/lib/formatCurrency';
 import { formatDateLong } from '@/lib/dateHelpers';
 import { transformDbBudgetToAppBudget } from '@/lib/budgetHelpers';
+import { api } from '@/lib/api-client';
 
 const frequencyLabels: Record<RecurringFrequency, string> = {
   'weekly': 'Weekly',
@@ -91,17 +92,14 @@ function RecurringPage() {
       const currentDate = new Date();
       const month = currentDate.getMonth();
       const year = currentDate.getFullYear();
-      const response = await fetch(`/api/budgets?month=${month}&year=${year}`);
-      if (response.ok) {
-        const data = await response.json();
-        const budget = transformDbBudgetToAppBudget(data);
-        // Build category labels from budget (key -> display name)
-        const categories: Record<string, string> = {};
-        Object.entries(budget.categories).forEach(([key, category]) => {
-          categories[key] = category.name;
-        });
-        setAvailableCategories(categories);
-      }
+      const data = await api.budget.get(month, year);
+      const budget = transformDbBudgetToAppBudget(data);
+      // Build category labels from budget (key -> display name)
+      const categories: Record<string, string> = {};
+      Object.entries(budget.categories).forEach(([key, category]) => {
+        categories[key] = category.name;
+      });
+      setAvailableCategories(categories);
     } catch (error) {
       console.error('Error fetching categories:', error);
       // Fall back to default categories
@@ -111,8 +109,7 @@ function RecurringPage() {
 
   const fetchPayments = useCallback(async () => {
     try {
-      const response = await fetch('/api/recurring-payments');
-      const data = await response.json();
+      const data = await api.recurring.list();
       setPayments(data);
     } catch (error) {
       console.error('Error fetching recurring payments:', error);
@@ -155,24 +152,28 @@ function RecurringPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const url = '/api/recurring-payments';
-    const method = editingPayment ? 'PUT' : 'POST';
-    const body = editingPayment
-      ? { id: editingPayment.id, ...formData }
-      : { ...formData, budgetItemId: pendingBudgetItemId };
-
     try {
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      if (response.ok) {
-        fetchPayments();
-        resetForm();
-        setPendingBudgetItemId(null);
+      if (editingPayment) {
+        await api.recurring.update(editingPayment.id, {
+          name: formData.name,
+          amount: formData.amount,
+          frequency: formData.frequency,
+          nextDueDate: formData.nextDueDate,
+          categoryType: formData.categoryType || undefined,
+        });
+      } else {
+        await api.recurring.create({
+          name: formData.name,
+          amount: formData.amount,
+          frequency: formData.frequency,
+          nextDueDate: formData.nextDueDate,
+          categoryType: formData.categoryType || undefined,
+          budgetItemId: pendingBudgetItemId || undefined,
+        });
       }
+      fetchPayments();
+      resetForm();
+      setPendingBudgetItemId(null);
     } catch (error) {
       console.error('Error saving recurring payment:', error);
     }
@@ -182,13 +183,8 @@ function RecurringPage() {
     if (!confirm('Are you sure you want to delete this recurring payment?')) return;
 
     try {
-      const response = await fetch(`/api/recurring-payments?id=${id}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        fetchPayments();
-      }
+      await api.recurring.delete(id);
+      fetchPayments();
     } catch (error) {
       console.error('Error deleting recurring payment:', error);
     }

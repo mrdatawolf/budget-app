@@ -10,6 +10,7 @@ import SpendingTrendsChart from '@/components/charts/SpendingTrendsChart';
 import FlowDiagram from '@/components/charts/FlowDiagram';
 import { Budget } from '@/types/budget';
 import { transformDbBudgetToAppBudget } from '@/lib/budgetHelpers';
+import { api } from '@/lib/api-client';
 
 export default function InsightsPageWrapper() {
   return (
@@ -45,8 +46,7 @@ function InsightsPage() {
       }
 
       try {
-        const response = await fetch(`/api/budgets?month=${month}&year=${year}`);
-        const data = await response.json();
+        const data = await api.budget.get(month, year);
         const transformedBudget = transformDbBudgetToAppBudget(data);
         budgetsData.push(transformedBudget);
       } catch (error) {

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import WelcomeStep from '@/components/onboarding/WelcomeStep';
+import { api } from '@/lib/api-client';
 import ConceptsStep from '@/components/onboarding/ConceptsStep';
 import BufferStep from '@/components/onboarding/BufferStep';
 import ItemsStep from '@/components/onboarding/ItemsStep';
@@ -49,8 +50,7 @@ export default function OnboardingPage() {
     const month = now.getMonth();
     const year = now.getFullYear();
 
-    const res = await fetch(`/api/budgets?month=${month}&year=${year}`);
-    const budget = await res.json();
+    const budget = await api.budget.get(month, year) as { id?: string; buffer?: number; categories?: Array<{ id: number; categoryType: string; name: string; items?: Array<{ id: number; name: string; planned: number }> }> };
 
     if (budget?.id) {
       setBudgetId(budget.id);
@@ -87,18 +87,17 @@ export default function OnboardingPage() {
   useEffect(() => {
     async function init() {
       // Check onboarding status
-      const statusRes = await fetch('/api/onboarding');
-      const status = await statusRes.json();
+      const status = await api.onboarding.getStatus();
 
-      if (status.completed) {
+      if (status?.completed) {
         // Already completed — allow revisit but start at step 1
         setCurrentStep(1);
-      } else if (status.currentStep > 1) {
+      } else if (status?.currentStep && status.currentStep > 1) {
         setCurrentStep(status.currentStep);
       }
 
       // Initialize or create onboarding record
-      await fetch('/api/onboarding', { method: 'POST' });
+      await api.onboarding.initialize();
 
       // Ensure budget exists
       await initializeBudget();
@@ -109,11 +108,7 @@ export default function OnboardingPage() {
   }, [initializeBudget]);
 
   const handleSkip = async () => {
-    await fetch('/api/onboarding', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'skip' }),
-    });
+    await api.onboarding.finish('skip');
     window.location.href = '/';
   };
 

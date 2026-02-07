@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Budget, BudgetItem } from '@/types/budget';
 import { FaTimes, FaArrowUp, FaArrowDown, FaMinus } from 'react-icons/fa';
 import { formatCurrency } from '@/lib/formatCurrency';
+import { api } from '@/lib/api-client';
 
 interface MonthlyReportModalProps {
   isOpen: boolean;
@@ -67,35 +68,32 @@ export default function MonthlyReportModal({ isOpen, onClose, budget }: MonthlyR
         prevYear -= 1;
       }
 
-      const response = await fetch(`/api/budgets?month=${prevMonth}&year=${prevYear}`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data.categories) {
-          // Transform the data
-          const { transformDbBudgetToAppBudget } = await import('@/lib/budgetHelpers');
-          const prevBudget = transformDbBudgetToAppBudget(data);
+      const data = await api.budget.get(prevMonth, prevYear) as { categories?: unknown };
+      if (data && data.categories) {
+        // Transform the data
+        const { transformDbBudgetToAppBudget } = await import('@/lib/budgetHelpers');
+        const prevBudget = transformDbBudgetToAppBudget(data);
 
-          const categoryTotals: Record<string, number> = {};
-          let totalExpenses = 0;
-          let totalIncome = 0;
+        const categoryTotals: Record<string, number> = {};
+        let totalExpenses = 0;
+        let totalIncome = 0;
 
-          Object.entries(prevBudget.categories).forEach(([key, category]) => {
-            const catActual = category.items.reduce((sum, item) => sum + item.actual, 0);
-            categoryTotals[key] = catActual;
+        Object.entries(prevBudget.categories).forEach(([key, category]) => {
+          const catActual = category.items.reduce((sum, item) => sum + item.actual, 0);
+          categoryTotals[key] = catActual;
 
-            if (key === 'income') {
-              totalIncome = catActual;
-            } else if (key !== 'saving') {
-              totalExpenses += catActual;
-            }
-          });
+          if (key === 'income') {
+            totalIncome = catActual;
+          } else if (key !== 'saving') {
+            totalExpenses += catActual;
+          }
+        });
 
-          setPreviousMonth({
-            totalExpenses,
-            totalIncome,
-            categoryTotals,
-          });
-        }
+        setPreviousMonth({
+          totalExpenses,
+          totalIncome,
+          categoryTotals,
+        });
       }
     } catch (error) {
       console.error('Error fetching previous month:', error);

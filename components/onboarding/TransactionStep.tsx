@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { formatCurrency } from '@/lib/formatCurrency';
 import { getTodayString } from '@/lib/dateHelpers';
+import { api } from '@/lib/api-client';
 
 interface SuggestedTransaction {
   description: string;
@@ -49,25 +50,15 @@ export default function TransactionStep({ createdItems, onNext, onBack }: Transa
     setSaving(true);
     setError('');
     try {
-      const res = await fetch('/api/transactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          budgetItemId,
-          date,
-          description: description.trim(),
-          amount: numAmount,
-          type,
-        }),
+      await api.transaction.create({
+        budgetItemId,
+        date,
+        description: description.trim(),
+        amount: numAmount,
+        type,
       });
 
-      if (!res.ok) throw new Error('Failed to create transaction');
-
-      await fetch('/api/onboarding', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ step: 6 }),
-      });
+      await api.onboarding.updateStep(6);
 
       onNext();
     } catch {
@@ -78,11 +69,7 @@ export default function TransactionStep({ createdItems, onNext, onBack }: Transa
   };
 
   const handleSkip = async () => {
-    await fetch('/api/onboarding', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ step: 6 }),
-    });
+    await api.onboarding.updateStep(6);
     onNext();
   };
 
