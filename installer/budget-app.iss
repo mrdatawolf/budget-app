@@ -2,7 +2,7 @@
 ; Download Inno Setup from: https://jrsoftware.org/isinfo.php
 
 #define MyAppName "Budget App"
-#define MyAppVersion "1.7.0"
+#define MyAppVersion "2.0.0"
 #define MyAppPublisher "Budget App"
 #define MyAppURL "https://github.com/your-repo/budget-app"
 #define MyAppExeName "start.bat"
@@ -69,24 +69,39 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 Filename: "{app}\stop.bat"; Flags: runhidden waituntilterminated
 
 [Code]
-// Check if port 3000 is already in use
-function IsPortInUse(): Boolean;
+// Check if either port (API 3401 or Web 3400) is already in use
+function IsPortInUse(Port: String): Boolean;
 var
   ResultCode: Integer;
 begin
   Result := False;
-  if Exec('cmd.exe', '/c netstat -an | findstr ":3000.*LISTENING"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  if Exec('cmd.exe', '/c netstat -an | findstr ":' + Port + '.*LISTENING"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
     Result := (ResultCode = 0);
   end;
 end;
 
 function InitializeSetup(): Boolean;
+var
+  PortWarning: String;
 begin
   Result := True;
-  if IsPortInUse() then
+  PortWarning := '';
+
+  if IsPortInUse('3400') then
+    PortWarning := 'Port 3400 (web server)';
+
+  if IsPortInUse('3401') then
   begin
-    if MsgBox('Port 3000 appears to be in use. Another instance of Budget App or another application may be running.' + #13#10 + #13#10 + 'Continue installation anyway?', mbConfirmation, MB_YESNO) = IDNO then
+    if PortWarning <> '' then
+      PortWarning := PortWarning + ' and port 3401 (API server)'
+    else
+      PortWarning := 'Port 3401 (API server)';
+  end;
+
+  if PortWarning <> '' then
+  begin
+    if MsgBox(PortWarning + ' appears to be in use. Another instance of Budget App or another application may be running.' + #13#10 + #13#10 + 'Continue installation anyway?', mbConfirmation, MB_YESNO) = IDNO then
     begin
       Result := False;
     end;
