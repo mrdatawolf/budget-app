@@ -1,37 +1,45 @@
 #!/usr/bin/env node
 /**
- * Development server — starts both the Hono API server and Next.js client
- * from a single command (`pnpm dev`).
+ * Production server — starts both the Hono API server and Next.js standalone
+ * server from a single command (`pnpm start`).
+ *
+ * Requires:
+ *   - `pnpm server:build` (builds packages/server/dist/)
+ *   - `pnpm build` (builds .next/standalone/)
  */
 
 const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
 const { readEnvVar, startApiServer, waitForHealth, stopApiServer } = require('./server-manager');
 
 const WEB_PREFIX = '\x1b[35m[WEB]\x1b[0m';
 
-// Read ports from env files
 const apiPort = parseInt(readEnvVar('API_PORT', '3001'), 10);
 const serverPort = parseInt(readEnvVar('SERVER_PORT', '3000'), 10);
-
-console.log(`Starting development environment...`);
-console.log(`  API server port: ${apiPort}`);
-console.log(`  Web client port: ${serverPort}`);
-console.log('');
 
 let nextProcess = null;
 let shuttingDown = false;
 
-function startNextDev() {
-  // Use a single command string with shell to avoid DEP0190 deprecation warning
-  const extraArgs = process.argv.slice(2).join(' ');
-  const cmd = `npx next dev -p ${serverPort}${extraArgs ? ' ' + extraArgs : ''}`;
+function startNextProd() {
+  // Next.js standalone server location
+  const standaloneServer = path.join(__dirname, '..', '.next', 'standalone', 'server.js');
 
-  console.log(`${WEB_PREFIX} Starting Next.js dev server...`);
+  if (!fs.existsSync(standaloneServer)) {
+    console.error(`${WEB_PREFIX} Standalone server not found at ${standaloneServer}`);
+    console.error(`${WEB_PREFIX} Run "pnpm build" first to create the standalone build.`);
+    process.exit(1);
+  }
 
-  nextProcess = spawn(cmd, [], {
+  console.log(`${WEB_PREFIX} Starting Next.js production server on port ${serverPort}...`);
+
+  nextProcess = spawn(process.execPath, [standaloneServer], {
     stdio: ['ignore', 'pipe', 'pipe'],
-    shell: true,
-    env: { ...process.env, PORT: serverPort.toString() },
+    env: {
+      ...process.env,
+      PORT: serverPort.toString(),
+      HOSTNAME: '0.0.0.0',
+    },
   });
 
   nextProcess.stdout.on('data', (data) => {
@@ -63,7 +71,6 @@ async function shutdown(exitCode = 0) {
 
   console.log('\nShutting down...');
 
-  // Kill Next.js
   if (nextProcess) {
     if (process.platform === 'win32') {
       spawn('taskkill', ['/pid', nextProcess.pid.toString(), '/f', '/t'], { stdio: 'ignore' });
@@ -72,27 +79,36 @@ async function shutdown(exitCode = 0) {
     }
   }
 
-  // Kill API server
   await stopApiServer();
 
   process.exit(exitCode);
 }
 
-// Handle signals
 process.on('SIGINT', () => shutdown(0));
 process.on('SIGTERM', () => shutdown(0));
 
-// Main flow
 async function main() {
-  try {
-    // 1. Start the API server
-    startApiServer({ mode: 'dev' });
+  // Verify server build exists
+  const serverDist = path.join(__dirname, '..', 'packages', 'server', 'dist', 'index.js');
+  if (!fs.existsSync(serverDist)) {
+    console.error('API server build not found. Run "pnpm server:build" first.');
+    process.exit(1);
+  }
 
-    // 2. Wait for it to be healthy
+  console.log(`Starting production environment...`);
+  console.log(`  API server port: ${apiPort}`);
+  console.log(`  Web client port: ${serverPort}`);
+  console.log('');
+
+  try {
+    // 1. Start the API server (production mode)
+    startApiServer({ mode: 'prod' });
+
+    // 2. Wait for health check
     await waitForHealth(apiPort);
 
-    // 3. Start Next.js
-    startNextDev();
+    // 3. Start Next.js standalone server
+    startNextProd();
   } catch (err) {
     console.error(`Startup failed: ${err.message}`);
     await shutdown(1);

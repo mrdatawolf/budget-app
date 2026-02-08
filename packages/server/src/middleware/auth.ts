@@ -1,14 +1,48 @@
 import { MiddlewareHandler } from 'hono';
+import { createRemoteJWKSet, jwtVerify, errors as joseErrors } from 'jose';
 import type { AppEnv } from '../types';
 
 // Local user ID used when no cloud auth is present
 const LOCAL_USER_ID = 'local';
 
+// Cached JWKS fetcher — created lazily on first remote request
+let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
+
+/**
+ * Derive the Clerk JWKS URL from the publishable key.
+ * Clerk publishable keys are formatted as `pk_test_<base64>` or `pk_live_<base64>`.
+ * The base64 portion decodes to the Clerk frontend API domain.
+ */
+function getClerkJwksUrl(): string {
+  const key = process.env.CLERK_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+  if (!key) {
+    throw new Error('CLERK_PUBLISHABLE_KEY or NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is required for remote mode');
+  }
+
+  // Extract base64 portion after the prefix (pk_test_ or pk_live_)
+  const parts = key.split('_');
+  const encoded = parts[parts.length - 1];
+  const domain = Buffer.from(encoded, 'base64').toString('utf-8').replace(/\$/, '');
+
+  return `https://${domain}/.well-known/jwks.json`;
+}
+
+/**
+ * Get or create the cached JWKS fetcher.
+ */
+function getJwks(): ReturnType<typeof createRemoteJWKSet> {
+  if (!jwks) {
+    const url = getClerkJwksUrl();
+    jwks = createRemoteJWKSet(new URL(url));
+  }
+  return jwks;
+}
+
 /**
  * Authentication middleware for Hono.
  *
- * In local mode (localhost/127.0.0.1): Uses implicit local user
- * In remote mode: Verifies JWT token from Authorization header
+ * In local mode (localhost/127.0.0.1): Uses implicit local user — no token required.
+ * In remote mode: Verifies JWT signature against Clerk's JWKS with RS256.
  */
 export const requireAuth = (): MiddlewareHandler<AppEnv> => {
   return async (c, next) => {
@@ -19,7 +53,7 @@ export const requireAuth = (): MiddlewareHandler<AppEnv> => {
       // Local mode: implicit user
       c.set('userId', LOCAL_USER_ID);
     } else {
-      // Remote mode: verify token
+      // Remote mode: verify JWT
       const authHeader = c.req.header('Authorization');
 
       if (!authHeader?.startsWith('Bearer ')) {
@@ -29,18 +63,27 @@ export const requireAuth = (): MiddlewareHandler<AppEnv> => {
       const token = authHeader.slice(7);
 
       try {
-        // TODO: Implement actual Clerk JWT verification
-        // For now, extract userId from token payload (base64 decode the payload section)
-        // This is a placeholder - real implementation will use Clerk SDK
-        const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
-        const userId = payload.sub || payload.userId;
+        const { payload } = await jwtVerify(token, getJwks(), {
+          clockTolerance: 30, // 30 seconds tolerance for clock skew
+        });
+
+        const userId = payload.sub;
 
         if (!userId) {
           return c.json({ error: 'Unauthorized', message: 'Invalid token: missing user ID' }, 401);
         }
 
         c.set('userId', userId);
-      } catch {
+      } catch (err) {
+        if (err instanceof joseErrors.JWTExpired) {
+          return c.json({ error: 'Unauthorized', message: 'Token expired' }, 401);
+        }
+        if (err instanceof joseErrors.JWTClaimValidationFailed) {
+          return c.json({ error: 'Unauthorized', message: 'Token claim validation failed' }, 401);
+        }
+        if (err instanceof joseErrors.JWSSignatureVerificationFailed) {
+          return c.json({ error: 'Unauthorized', message: 'Invalid token signature' }, 401);
+        }
         return c.json({ error: 'Unauthorized', message: 'Invalid token' }, 401);
       }
     }
