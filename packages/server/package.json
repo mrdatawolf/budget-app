@@ -13,7 +13,8 @@
     "@budget-app/shared": "workspace:*",
     "@hono/node-server": "^1.13.8",
     "drizzle-orm": "^0.45.1",
-    "hono": "^4.7.6"
+    "hono": "^4.7.6",
+    "jose": "^5.9.6"
   },
   "devDependencies": {
     "@types/node": "^20",

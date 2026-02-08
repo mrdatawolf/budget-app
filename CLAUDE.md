@@ -6,8 +6,8 @@ This document contains context for Claude AI to continue development on this bud
 
 A zero-based budget tracking application built with Next.js, TypeScript, and Tailwind CSS. The app features bank account integration via Teller API for automatic transaction imports.
 
-**Current Version:** v2.0.0-alpha (Client-Server Separation — Phase 3 complete)
-**Last Session:** 2026-02-07
+**Current Version:** v2.0.0-alpha (Client-Server Separation — Phase 5 complete)
+**Last Session:** 2026-02-08
 
 ## Instructions for Claude
 
@@ -280,7 +280,7 @@ All API routes have been migrated from Next.js `app/api/` to the standalone Hono
 - `csv.ts` - GET/POST/PUT/DELETE `/accounts`, POST `/preview`, POST/PUT `/import`
 - `onboarding.ts` - GET/POST/PUT/PATCH
 - `auth.ts` - GET/POST (claim-data)
-- `database.ts` - GET/POST (no auth)
+- `database.ts` - GET/POST/DELETE (no auth)
 
 ### API Server Infrastructure (packages/server/src/)
 - `index.ts` - Hono server entry point, route mounting, auth middleware ordering
@@ -419,9 +419,14 @@ const emojiMap: Record<string, string> = {
 ## Development Commands
 
 ```bash
-# Client + Server (both needed for full app)
-pnpm dev             # Start Next.js client on :3000
-pnpm server:dev      # Start Hono API server (port from API_PORT env, default 3001)
+# Full stack (starts both API server + Next.js client)
+pnpm dev             # Starts Hono API server, waits for health check, then starts Next.js
+
+# Individual servers (for debugging)
+pnpm server:dev      # Start Hono API server only (port from API_PORT env, default 3001)
+
+# Production
+pnpm start           # Starts both servers from built artifacts
 
 # Database
 npm run db:push      # Push schema changes to Supabase PostgreSQL
@@ -437,7 +442,7 @@ npm run cap:ios      # Build + open Xcode
 npm run cap:android  # Build + open Android Studio
 
 # Health check
-curl http://localhost:3001/health
+curl http://localhost:3401/health
 ```
 
 ## Testing Notes
@@ -830,7 +835,7 @@ DATABASE_URL=postgresql://postgres.xxx:password@aws-0-us-east-1.pooler.supabase.
 
 ## Session Handoff Notes
 
-Last session (2026-02-07) completed **Phases 1, 2, and 3** of client-server separation:
+Last session (2026-02-08) completed **Phases 1–5** of client-server separation:
 
 ### Completed
 1. **Phase 1: Monorepo structure** with pnpm workspaces
@@ -840,6 +845,25 @@ Last session (2026-02-07) completed **Phases 1, 2, and 3** of client-server sepa
 5. **Phase 2: All client files migrated** — zero raw `fetch('/api/...')` calls remain in components/pages
 6. **Phase 3: All 20 Next.js API routes migrated** to 10 Hono route files (45+ HTTP handlers)
 7. **Phase 3: Next.js `app/api/` directory deleted** — clean break, all API served by Hono
+8. **Phase 3.5: Next.js rewrite proxy** — `/api/*` requests proxied to Hono server (avoids cross-origin)
+9. **Phase 4: Embedded server manager** — `pnpm dev` starts both API + Next.js from single command
+10. **Phase 5: Clerk JWT verification** — remote mode uses RS256 signature verification via `jose`
+
+### Phase 4 Details (Completed 2026-02-08)
+- **`scripts/server-manager.js`** — Reusable module for API server lifecycle: spawn, health check polling, auto-restart (3 retries), graceful shutdown (Windows `taskkill` support)
+- **`scripts/dev.js`** — Rewritten to start both Hono API server + Next.js dev server from single `pnpm dev` command. Color-coded prefixes: `[API]` (cyan), `[WEB]` (magenta)
+- **`scripts/start.js`** — Production entry point: starts both servers from built artifacts (`packages/server/dist/` + `.next/standalone/`)
+- **`package.json`** — `start` script updated to `node scripts/start.js`
+
+### Phase 5 Details (Completed 2026-02-08)
+- **`packages/server/src/middleware/auth.ts`** — Replaced base64 decode stub with proper JWT verification:
+  - Uses `jose` library (`createRemoteJWKSet` + `jwtVerify`) for RS256 signature validation
+  - JWKS URL derived automatically from `CLERK_PUBLISHABLE_KEY` (base64-decodes to Clerk frontend API domain)
+  - 30-second clock tolerance (handles known clock skew issue)
+  - Specific error responses: "Token expired", "Invalid token signature", "Token claim validation failed"
+  - Local mode unchanged: `localhost`/`127.0.0.1` requests bypass JWT, use implicit `userId = 'local'`
+- **`packages/server/package.json`** — Added `jose` ^5.9.6 dependency
+- **`.env.example`** — Added `API_PORT`, documented Clerk keys for remote mode
 
 ### Phase 3 Details (Completed 2026-02-07)
 - **10 Hono route files** created in `packages/server/src/routes/`
@@ -848,18 +872,23 @@ Last session (2026-02-07) completed **Phases 1, 2, and 3** of client-server sepa
 - **Bug fix:** Copy route now uses `fromMonth/fromYear/toMonth/toYear` (was `sourceMonth/sourceYear/targetMonth/targetYear`) to match api-client
 - **Shared helpers:** `getMonthlyContribution()` and `CATEGORY_TYPES` extracted from 3 duplicate definitions into `lib/helpers.ts`
 - **Auth middleware ordering:** Database route mounted before `requireAuth()` (no auth); all other `/api/*` routes require auth
-- **Port config:** Server uses `API_PORT` env var (default 3001), loaded from `.env.local` via `--env-file` flag
+- **Port config:** Server uses `API_PORT` env var (default 3401), loaded from `.env.local` via `--env-file` flag
+
+### Connectivity Fixes (2026-02-08)
+- **Next.js rewrite proxy:** Added `rewrites()` in `next.config.ts` to proxy `/api/*` → `http://localhost:${API_PORT}/api/*`. Avoids cross-origin issues between browser and Hono server on Windows.
+- **CORS dynamic origins:** Changed from hardcoded port list to dynamic function accepting any localhost port
+- **Database DELETE handler:** Added missing `route.delete('/')` to `database.ts` (api-client calls `DELETE /api/database`)
+- **api-client body consumption fix:** `response.json()` consumed the body stream; if it failed, `response.text()` would throw. Fixed to read `response.text()` first, then try `JSON.parse()`
+- **No `NEXT_PUBLIC_SERVER_URI` needed:** With rewrite proxy, the api-client uses same-origin requests (empty base URL). For production/remote mode, set `NEXT_PUBLIC_SERVER_URI` to bypass the proxy.
 
 ### Next Steps
-- Phase 4: Create embedded server manager for local mode
-- Phase 5: Implement Clerk JWT verification for remote mode
 - Phase 6: Update build scripts and installer
 
 ### Test Commands
 ```bash
-pnpm server:dev    # Start Hono server (port from API_PORT in .env.local)
-pnpm dev           # Start Next.js client on :3000
-curl http://localhost:3401/health   # Verify server is running
+pnpm dev           # Start both API server + Next.js client (single command)
+pnpm server:dev    # Start Hono server only (for standalone development)
+curl http://localhost:3401/health   # Verify API server is running
 ```
 
 ---
@@ -868,29 +897,30 @@ curl http://localhost:3401/health   # Verify server is running
 
 ### Goal
 Split the app into 3 decoupled parts:
-1. **Client** - Next.js frontend with configurable SERVER_URI
+1. **Client** - Next.js frontend (proxy mode or direct SERVER_URI)
 2. **API Server** - Standalone Hono server that can run embedded (local) or remote
 3. **Database** - PGlite (local) or Supabase (cloud)
 
 ### Architecture
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    SERVER_URI Config                         │
-│  localhost/127.0.0.1 → Embedded    Other → Remote HTTP      │
+│                  Development (Proxy Mode)                     │
+│  Browser → Next.js (:3400) → rewrites /api/* → Hono (:3401) │
+│  (same-origin requests, no CORS needed)                      │
 └─────────────────────────────────────────────────────────────┘
-         │                                    │
-         ▼                                    ▼
-┌─────────────────┐                  ┌─────────────────┐
-│ Client spawns   │                  │ Client calls    │
-│ local API server│                  │ remote server   │
-│ as child process│                  │ directly        │
-└────────┬────────┘                  └────────┬────────┘
-         │                                    │
-         ▼                                    ▼
+
+┌─────────────────────────────────────────────────────────────┐
+│                  Production (Direct Mode)                     │
+│  NEXT_PUBLIC_SERVER_URI → Browser calls Hono directly        │
+│  localhost → Embedded    Other → Remote HTTP + JWT           │
+└─────────────────────────────────────────────────────────────┘
+         │
+         ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                      API Server (Hono)                       │
 │  - 10 route files, 45+ HTTP handlers                        │
 │  - Auth middleware (local: implicit, remote: JWT)           │
+│  - CORS (dynamic localhost origins for direct mode)         │
 │  - Teller mTLS client                                       │
 └─────────────────────────────────────────────────────────────┘
          │
@@ -947,17 +977,26 @@ budget-app/
 - `packages/shared/src/db/` — getDb(), getLocalDb(), getCloudDb()
 - `packages/shared/src/schema.ts` — Drizzle schema
 - `packages/server/src/index.ts` — Hono server entry point
-- `packages/server/src/middleware/auth.ts` — Dual-mode auth (local/remote)
+- `packages/server/src/middleware/auth.ts` — Dual-mode auth: local (implicit user) / remote (Clerk JWT via `jose`)
 - `lib/api-client.ts` — Typed API client with all endpoint methods
+- `next.config.ts` — Rewrite proxy (`/api/*` → Hono server) + standalone output
+- `scripts/server-manager.js` — Reusable API server lifecycle (spawn, health check, restart, shutdown)
+- `scripts/dev.js` — Development entry point: starts both API + Next.js servers
+- `scripts/start.js` — Production entry point: starts both servers from built artifacts
+
+### API Routing
+- **Dev mode (default):** `next.config.ts` `rewrites()` proxies `/api/*` → `http://localhost:${API_PORT}/api/*`. Browser makes same-origin requests. No CORS needed.
+- **Production/remote:** Set `NEXT_PUBLIC_SERVER_URI` to bypass the proxy and call the Hono server directly. CORS handles cross-origin.
+- **api-client logic:** `getBaseUrl()` returns `NEXT_PUBLIC_SERVER_URI` if set, else `''` (same-origin → proxy).
 
 ### Environment Variables
 ```env
 # Client
-NEXT_PUBLIC_SERVER_URI=http://localhost:3401  # API server URL (or remote)
 SERVER_PORT=3400                              # Next.js client port
+# NEXT_PUBLIC_SERVER_URI=https://api.example.com  # Only for production/remote (bypasses proxy)
 
 # Server
-API_PORT=3401                                 # Hono API server port (default 3001)
+API_PORT=3401                                 # Hono API server port (default 3401)
 PGLITE_DB_LOCATION=./data/budget-local       # Local database path
 DATABASE_URL=postgresql://...                 # For cloud sync
 TELLER_CERTIFICATE_PATH=./certificates/certificate.pem

@@ -9,7 +9,7 @@
     "server:start": "pnpm --filter @budget-app/server start",
     "dev": "node scripts/dev.js",
     "build": "next build",
-    "start": "next start",
+    "start": "node scripts/start.js",
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
