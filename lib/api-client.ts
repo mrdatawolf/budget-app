@@ -205,6 +205,13 @@ export const budgetApi = {
       body: JSON.stringify({ budgetId, mode }),
     });
   },
+
+  async loadDemo(): Promise<unknown> {
+    return request('/api/budgets/demo', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
 };
 
 // ============================================================================
