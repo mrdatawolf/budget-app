@@ -1,25 +1,159 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/db';
-import { linkedAccounts, transactions, splitTransactions, budgets, budgetCategories, budgetItems } from '@/db/schema';
-import { eq, and, isNull, isNotNull, notInArray, inArray, sql } from 'drizzle-orm';
-import { createTellerClient, TellerTransaction } from '@/lib/teller';
-import { requireAuth, isAuthError } from '@/lib/auth';
+import { Hono } from 'hono';
+import { getDb } from '@budget-app/shared/db';
+import { linkedAccounts, transactions, splitTransactions, budgets, budgetCategories, budgetItems } from '@budget-app/shared/schema';
+import { eq, and, isNull, isNotNull, notInArray, inArray } from 'drizzle-orm';
+import { getUserId } from '../middleware/auth';
+import { createTellerClient } from '../lib/teller';
+import type { TellerAccount, TellerTransaction } from '../lib/teller';
+import type { AppEnv } from '../types';
 
-// POST - Sync transactions from linked accounts
-export async function POST(request: NextRequest) {
+const route = new Hono<AppEnv>();
+
+// ============================================================================
+// ACCOUNTS
+// ============================================================================
+
+// GET /accounts - List all linked Teller accounts from database
+route.get('/accounts', async (c) => {
   try {
-    const authResult = await requireAuth();
-    if (isAuthError(authResult)) return authResult.error;
-    const { userId } = authResult;
-
+    const userId = getUserId(c);
     const db = await getDb();
-    const body = await request.json();
+    // Only return Teller accounts (not CSV accounts)
+    const accounts = await db.select().from(linkedAccounts).where(
+      and(eq(linkedAccounts.userId, userId), eq(linkedAccounts.accountSource, 'teller'))
+    );
+    return c.json(accounts);
+  } catch (error) {
+    console.error('Error fetching linked accounts:', error);
+    return c.json({ error: 'Failed to fetch linked accounts' }, 500);
+  }
+});
+
+// POST /accounts - Save a new linked account after Teller Connect enrollment
+route.post('/accounts', async (c) => {
+  try {
+    const userId = getUserId(c);
+    const db = await getDb();
+    const body = await c.req.json();
+    const { accessToken, enrollment } = body;
+
+    if (!accessToken) {
+      return c.json({ error: 'Access token is required' }, 400);
+    }
+
+    // Fetch accounts from Teller API using the access token
+    const tellerClient = createTellerClient(accessToken);
+    const tellerAccounts: TellerAccount[] = await tellerClient.listAccounts();
+
+    // Save each account to the database
+    const savedAccounts = [];
+    for (const account of tellerAccounts) {
+      // Check if account already exists for this user
+      const existing = await db
+        .select()
+        .from(linkedAccounts)
+        .where(and(eq(linkedAccounts.tellerAccountId, account.id), eq(linkedAccounts.userId, userId)))
+        .limit(1);
+
+      if (existing.length > 0) {
+        // Update existing account
+        await db
+          .update(linkedAccounts)
+          .set({
+            accessToken,
+            institutionName: account.institution.name,
+            accountName: account.name,
+            status: account.status,
+          })
+          .where(eq(linkedAccounts.tellerAccountId, account.id));
+        savedAccounts.push({ ...existing[0], updated: true });
+      } else {
+        // Insert new account
+        const [newAccount] = await db
+          .insert(linkedAccounts)
+          .values({
+            userId,
+            tellerAccountId: account.id,
+            tellerEnrollmentId: enrollment?.id || account.enrollment_id,
+            accessToken,
+            institutionName: account.institution.name,
+            institutionId: account.institution.id,
+            accountName: account.name,
+            accountType: account.type,
+            accountSubtype: account.subtype,
+            lastFour: account.last_four,
+            status: account.status,
+          })
+          .returning();
+        savedAccounts.push(newAccount);
+      }
+    }
+
+    return c.json({ accounts: savedAccounts });
+  } catch (error) {
+    console.error('Error saving linked account:', error);
+    return c.json({ error: 'Failed to save linked account' }, 500);
+  }
+});
+
+// DELETE /accounts - Remove a linked account
+route.delete('/accounts', async (c) => {
+  try {
+    const userId = getUserId(c);
+    const db = await getDb();
+    const id = c.req.query('id');
+
+    if (!id) {
+      return c.json({ error: 'Account ID is required' }, 400);
+    }
+
+    // Get the account and verify ownership
+    const [account] = await db
+      .select()
+      .from(linkedAccounts)
+      .where(and(eq(linkedAccounts.id, id), eq(linkedAccounts.userId, userId)))
+      .limit(1);
+
+    if (!account) {
+      return c.json({ error: 'Account not found' }, 404);
+    }
+
+    // Optionally disconnect from Teller (revoke access) - only for Teller accounts
+    if (account.accessToken && account.tellerAccountId) {
+      try {
+        const tellerClient = createTellerClient(account.accessToken);
+        await tellerClient.deleteAccount(account.tellerAccountId);
+      } catch {
+        // Continue even if Teller API fails - we still want to remove from our DB
+        console.warn('Failed to disconnect account from Teller API');
+      }
+    }
+
+    // Delete from database
+    await db.delete(linkedAccounts).where(eq(linkedAccounts.id, id));
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting linked account:', error);
+    return c.json({ error: 'Failed to delete linked account' }, 500);
+  }
+});
+
+// ============================================================================
+// SYNC
+// ============================================================================
+
+// POST /sync - Sync transactions from linked accounts
+route.post('/sync', async (c) => {
+  try {
+    const userId = getUserId(c);
+    const db = await getDb();
+    const body = await c.req.json();
     const { accountId, startDate, endDate } = body;
 
     // Get linked Teller accounts to sync (scoped to user, only Teller accounts)
     let accountsToSync;
     if (accountId) {
-      // Sync specific account (verify ownership and it's a Teller account)
       accountsToSync = await db
         .select()
         .from(linkedAccounts)
@@ -29,14 +163,13 @@ export async function POST(request: NextRequest) {
           eq(linkedAccounts.accountSource, 'teller')
         ));
     } else {
-      // Sync all user's Teller accounts
       accountsToSync = await db.select().from(linkedAccounts).where(
         and(eq(linkedAccounts.userId, userId), eq(linkedAccounts.accountSource, 'teller'))
       );
     }
 
     if (accountsToSync.length === 0) {
-      return NextResponse.json({ error: 'No linked accounts found' }, { status: 404 });
+      return c.json({ error: 'No linked accounts found' }, 404);
     }
 
     const results = {
@@ -47,7 +180,6 @@ export async function POST(request: NextRequest) {
     };
 
     for (const account of accountsToSync) {
-      // Skip if missing required Teller fields (shouldn't happen for Teller accounts)
       if (!account.accessToken || !account.tellerAccountId) {
         results.errors.push(`Account ${account.accountName}: Missing Teller credentials`);
         continue;
@@ -56,11 +188,10 @@ export async function POST(request: NextRequest) {
       try {
         const tellerClient = createTellerClient(account.accessToken);
 
-        // Fetch transactions from Teller
         const tellerTransactions: TellerTransaction[] = await tellerClient.listTransactions(
           account.tellerAccountId,
           {
-            count: 500, // Max transactions to fetch
+            count: 500,
             startDate,
             endDate,
           }
@@ -144,28 +275,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json(results);
+    return c.json(results);
   } catch (error) {
     console.error('Error syncing transactions:', error);
-    return NextResponse.json({ error: 'Failed to sync transactions' }, { status: 500 });
+    return c.json({ error: 'Failed to sync transactions' }, 500);
   }
-}
+});
 
-// GET - Get uncategorized transactions (not assigned to any budget item)
-export async function GET(request: NextRequest) {
+// GET /sync - Get uncategorized transactions (not assigned to any budget item)
+route.get('/sync', async (c) => {
   try {
-    const authResult = await requireAuth();
-    if (isAuthError(authResult)) return authResult.error;
-    const { userId } = authResult;
-
-    // Get month/year from query params for cross-month suggestions
-    const { searchParams } = new URL(request.url);
-    const monthParam = searchParams.get('month');
-    const yearParam = searchParams.get('year');
-    const currentMonth = monthParam !== null ? parseInt(monthParam) : new Date().getMonth();
-    const currentYear = yearParam !== null ? parseInt(yearParam) : new Date().getFullYear();
-
+    const userId = getUserId(c);
     const db = await getDb();
+
+    const monthParam = c.req.query('month');
+    const yearParam = c.req.query('year');
+    const currentMonth = monthParam !== undefined ? parseInt(monthParam) : new Date().getMonth();
+    const currentYear = yearParam !== undefined ? parseInt(yearParam) : new Date().getFullYear();
+
     // Get user's linked account IDs for filtering
     const userAccounts = await db
       .select({ id: linkedAccounts.id })
@@ -174,20 +301,16 @@ export async function GET(request: NextRequest) {
     const userAccountIds = userAccounts.map(a => a.id);
 
     if (userAccountIds.length === 0) {
-      return NextResponse.json([]);
+      return c.json([]);
     }
 
-    // Get IDs of transactions that have been split (these should not appear as uncategorized)
+    // Get IDs of transactions that have been split
     const splitParentIds = await db
       .selectDistinct({ parentId: splitTransactions.parentTransactionId })
       .from(splitTransactions);
     const splitParentIdList = splitParentIds.map(s => s.parentId);
 
-    // Get transactions that:
-    // - Belong to user's linked accounts
-    // - Have no budgetItemId (uncategorized)
-    // - Are not deleted
-    // - Are not split
+    // Get uncategorized, non-deleted, non-split transactions
     const uncategorizedTransactions = await db.query.transactions.findMany({
       where: and(
         isNull(transactions.budgetItemId),
@@ -211,8 +334,6 @@ export async function GET(request: NextRequest) {
     const merchantSuggestions: Record<string, string> = {};
 
     if (merchantNames.length > 0) {
-      // Find previously categorized transactions with matching merchants
-      // Join with budget items to get the item name and category type
       const historicalTxns = await db
         .select({
           merchant: transactions.merchant,
@@ -256,7 +377,7 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Now look up the current month's budget to find matching items
+      // Look up the current month's budget to find matching items
       const currentBudget = await db.query.budgets.findFirst({
         where: and(
           eq(budgets.userId, userId),
@@ -273,7 +394,6 @@ export async function GET(request: NextRequest) {
       });
 
       if (currentBudget) {
-        // Build a lookup: (categoryType, itemName) -> current month's item ID
         const currentItemLookup: Record<string, string> = {};
         for (const category of currentBudget.categories) {
           for (const item of category.items) {
@@ -282,7 +402,6 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // Map merchants to current month's item IDs
         for (const [merchant, { categoryType, itemName }] of Object.entries(merchantBestItem)) {
           const key = `${categoryType}|${itemName.toLowerCase()}`;
           if (currentItemLookup[key]) {
@@ -310,9 +429,11 @@ export async function GET(request: NextRequest) {
       suggestedBudgetItemId: txn.merchant ? merchantSuggestions[txn.merchant] || null : null,
     }));
 
-    return NextResponse.json(result);
+    return c.json(result);
   } catch (error) {
     console.error('Error fetching uncategorized transactions:', error);
-    return NextResponse.json({ error: 'Failed to fetch uncategorized transactions' }, { status: 500 });
+    return c.json({ error: 'Failed to fetch uncategorized transactions' }, 500);
   }
-}
+});
+
+export default route;

@@ -1,4 +1,5 @@
 import { MiddlewareHandler } from 'hono';
+import type { AppEnv } from '../types';
 
 // Local user ID used when no cloud auth is present
 const LOCAL_USER_ID = 'local';
@@ -9,7 +10,7 @@ const LOCAL_USER_ID = 'local';
  * In local mode (localhost/127.0.0.1): Uses implicit local user
  * In remote mode: Verifies JWT token from Authorization header
  */
-export const requireAuth = (): MiddlewareHandler => {
+export const requireAuth = (): MiddlewareHandler<AppEnv> => {
   return async (c, next) => {
     const host = c.req.header('host') || '';
     const isLocal = host.startsWith('localhost') || host.startsWith('127.0.0.1');
@@ -52,12 +53,8 @@ export const requireAuth = (): MiddlewareHandler => {
  * Get the authenticated user ID from the context.
  * Should only be called after requireAuth middleware has run.
  */
-export function getUserId(c: { get: (key: string) => unknown }): string {
-  const userId = c.get('userId');
-  if (typeof userId !== 'string') {
-    throw new Error('User ID not found in context. Did you forget to use requireAuth middleware?');
-  }
-  return userId;
+export function getUserId(c: { get: (key: 'userId') => string }): string {
+  return c.get('userId');
 }
 
 /**

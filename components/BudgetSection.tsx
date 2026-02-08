@@ -437,11 +437,7 @@ export default function BudgetSection({
       }));
 
       try {
-        await fetch("/api/budget-items/reorder", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ items: updates }),
-        });
+        await api.item.reorder(updates);
         onRefresh();
       } catch (error) {
         console.error("Error reordering items:", error);

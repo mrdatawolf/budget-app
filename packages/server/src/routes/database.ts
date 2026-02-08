@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { Hono } from 'hono';
 import {
   getDb,
   getDbStatus,
@@ -9,7 +9,7 @@ import {
   restoreFromBackup,
   deleteBackup,
   getCloudDb,
-} from '@/db';
+} from '@budget-app/shared/db';
 import {
   budgets,
   budgetCategories,
@@ -19,81 +19,65 @@ import {
   linkedAccounts,
   recurringPayments,
   userOnboarding,
-} from '@/db/schema';
+} from '@budget-app/shared/schema';
 
-/**
- * GET /api/database
- * Returns database status and available backups.
- */
-export async function GET() {
+const route = new Hono();
+
+// GET /database - Returns database status and available backups
+route.get('/', (c) => {
   const status = getDbStatus();
   const backups = listBackups();
-
-  // Check if cloud database is available
   const hasCloudConnection = !!process.env.DATABASE_URL;
 
-  return NextResponse.json({
+  return c.json({
     status,
     backups,
     hasCloudConnection,
   });
-}
+});
 
-/**
- * POST /api/database
- * Database management operations.
- *
- * Actions:
- * - backup: Create a manual backup of the database
- * - retry: Reset error and retry database initialization
- * - delete: Delete the local database (creates backup first)
- * - restore: Restore from a backup (requires backupPath in body)
- * - deleteBackup: Delete a specific backup (requires backupPath in body)
- * - syncFromCloud: Download all data from cloud database to local
- */
-export async function POST(request: NextRequest) {
+// POST /database - Database management operations
+route.post('/', async (c) => {
   try {
-    const body = await request.json();
+    const body = await c.req.json();
     const { action, backupPath } = body;
 
     switch (action) {
       case 'backup': {
         const newBackupPath = createBackup();
         if (newBackupPath) {
-          return NextResponse.json({
+          return c.json({
             success: true,
             message: 'Backup created successfully',
             backupPath: newBackupPath,
           });
         } else {
-          return NextResponse.json({
+          return c.json({
             success: false,
             message: 'No database to backup or backup failed',
-          }, { status: 400 });
+          }, 400);
         }
       }
 
       case 'retry': {
         resetDbError();
-
-        // Try to initialize the database
         try {
           await getDb();
-          return NextResponse.json({
+          return c.json({
             success: true,
             message: 'Database initialized successfully',
           });
         } catch (error) {
-          return NextResponse.json({
+          return c.json({
             success: false,
             message: error instanceof Error ? error.message : 'Failed to initialize database',
-          }, { status: 500 });
+          }, 500);
         }
       }
 
       case 'delete': {
         const newBackupPath = await deleteLocalDb();
-        return NextResponse.json({
+        return c.json({
           success: true,
           message: 'Database deleted successfully',
           backupPath: newBackupPath,
@@ -102,39 +86,38 @@ export async function POST(request: NextRequest) {
 
       case 'restore': {
         if (!backupPath) {
-          return NextResponse.json({
+          return c.json({
             success: false,
             message: 'backupPath is required',
-          }, { status: 400 });
+          }, 400);
         }
 
         await restoreFromBackup(backupPath);
 
-        // Try to initialize after restore
         try {
           await getDb();
-          return NextResponse.json({
+          return c.json({
             success: true,
             message: 'Database restored successfully',
           });
         } catch (error) {
-          return NextResponse.json({
+          return c.json({
             success: false,
             message: `Database restored but failed to initialize: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          }, { status: 500 });
+          }, 500);
         }
       }
 
       case 'deleteBackup': {
         if (!backupPath) {
-          return NextResponse.json({
+          return c.json({
             success: false,
             message: 'backupPath is required',
-          }, { status: 400 });
+          }, 400);
         }
 
         deleteBackup(backupPath);
-        return NextResponse.json({
+        return c.json({
           success: true,
           message: 'Backup deleted successfully',
         });
@@ -143,63 +126,52 @@ export async function POST(request: NextRequest) {
       case 'syncFromCloud': {
         const cloudDb = getCloudDb();
         if (!cloudDb) {
-          return NextResponse.json({
+          return c.json({
             success: false,
             message: 'Cloud database is not configured. Set DATABASE_URL in your environment.',
-          }, { status: 400 });
+          }, 400);
         }
 
-        // Delete local database first
         await deleteLocalDb();
-
-        // Initialize fresh local database
         const localDb = await getDb();
 
-        // Sync tables in FK dependency order
         try {
-          // 1. Budgets
+          // Sync tables in FK dependency order
           const cloudBudgets = await cloudDb.select().from(budgets);
           if (cloudBudgets.length > 0) {
             await localDb.insert(budgets).values(cloudBudgets);
           }
 
-          // 2. Budget Categories
           const cloudCategories = await cloudDb.select().from(budgetCategories);
           if (cloudCategories.length > 0) {
             await localDb.insert(budgetCategories).values(cloudCategories);
           }
 
-          // 3. Linked Accounts
           const cloudAccounts = await cloudDb.select().from(linkedAccounts);
           if (cloudAccounts.length > 0) {
             await localDb.insert(linkedAccounts).values(cloudAccounts);
           }
 
-          // 4. Recurring Payments
           const cloudRecurring = await cloudDb.select().from(recurringPayments);
           if (cloudRecurring.length > 0) {
             await localDb.insert(recurringPayments).values(cloudRecurring);
           }
 
-          // 5. Budget Items
           const cloudItems = await cloudDb.select().from(budgetItems);
           if (cloudItems.length > 0) {
             await localDb.insert(budgetItems).values(cloudItems);
           }
 
-          // 6. Transactions
           const cloudTransactions = await cloudDb.select().from(transactions);
           if (cloudTransactions.length > 0) {
             await localDb.insert(transactions).values(cloudTransactions);
           }
 
-          // 7. Split Transactions
           const cloudSplits = await cloudDb.select().from(splitTransactions);
           if (cloudSplits.length > 0) {
             await localDb.insert(splitTransactions).values(cloudSplits);
           }
 
-          // 8. User Onboarding
           const cloudOnboarding = await cloudDb.select().from(userOnboarding);
           if (cloudOnboarding.length > 0) {
             await localDb.insert(userOnboarding).values(cloudOnboarding);
@@ -215,7 +187,7 @@ export async function POST(request: NextRequest) {
             cloudSplits.length +
             cloudOnboarding.length;
 
-          return NextResponse.json({
+          return c.json({
             success: true,
             message: `Synced ${totalRecords} records from cloud`,
             counts: {
@@ -230,23 +202,42 @@ export async function POST(request: NextRequest) {
             },
           });
         } catch (syncError) {
-          return NextResponse.json({
+          return c.json({
             success: false,
             message: `Sync failed: ${syncError instanceof Error ? syncError.message : 'Unknown error'}`,
-          }, { status: 500 });
+          }, 500);
         }
       }
 
       default:
-        return NextResponse.json({
+        return c.json({
           success: false,
           message: `Unknown action: ${action}`,
-        }, { status: 400 });
+        }, 400);
     }
   } catch (error) {
-    return NextResponse.json({
+    return c.json({
       success: false,
       message: error instanceof Error ? error.message : 'Unknown error',
-    }, { status: 500 });
+    }, 500);
   }
-}
+});
+
+// DELETE /database - Delete the local database (creates backup first)
+route.delete('/', async (c) => {
+  try {
+    const newBackupPath = await deleteLocalDb();
+    return c.json({
+      success: true,
+      message: 'Database deleted successfully',
+      backupPath: newBackupPath,
+    });
+  } catch (error) {
+    return c.json({
+      success: false,
+      message: error instanceof Error ? error.message : 'Unknown error',
+    }, 500);
+  }
+});
+
+export default route;

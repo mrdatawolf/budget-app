@@ -1,20 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/db';
-import { budgets, linkedAccounts, recurringPayments } from '@/db/schema';
+import { Hono } from 'hono';
+import { getDb } from '@budget-app/shared/db';
+import { budgets, linkedAccounts, recurringPayments } from '@budget-app/shared/schema';
 import { eq } from 'drizzle-orm';
-import { requireAuth, isAuthError } from '@/lib/auth';
+import { getUserId } from '../middleware/auth';
+import type { AppEnv } from '../types';
 
-/**
- * POST /api/auth/claim-data
- * Claims all unclaimed data (userId = '') for the current user
- * This is used for migrating existing data to a new user account
- */
-export async function POST(request: NextRequest) {
-  const authResult = await requireAuth();
-  if (isAuthError(authResult)) return authResult.error;
-  const { userId } = authResult;
+const route = new Hono<AppEnv>();
 
+// POST /claim-data - Claims all unclaimed data (userId = '') for the current user
+route.post('/', async (c) => {
+  const userId = getUserId(c);
   const db = await getDb();
+
   const results = {
     budgets: 0,
     linkedAccounts: 0,
@@ -47,25 +44,20 @@ export async function POST(request: NextRequest) {
 
   const totalClaimed = results.budgets + results.linkedAccounts + results.recurringPayments;
 
-  return NextResponse.json({
+  return c.json({
     success: true,
     message: totalClaimed > 0
       ? `Claimed ${totalClaimed} records for your account`
       : 'No unclaimed data found',
     claimed: results,
   });
-}
+});
 
-/**
- * GET /api/auth/claim-data
- * Check if there's unclaimed data available
- */
-export async function GET(request: NextRequest) {
-  const authResult = await requireAuth();
-  if (isAuthError(authResult)) return authResult.error;
-
+// GET /claim-data - Check if there's unclaimed data available
+route.get('/', async (c) => {
+  const userId = getUserId(c);
   const db = await getDb();
-  // Count unclaimed records
+
   const unclaimedBudgets = await db.query.budgets.findMany({
     where: eq(budgets.userId, ''),
   });
@@ -82,7 +74,7 @@ export async function GET(request: NextRequest) {
                        unclaimedAccounts.length > 0 ||
                        unclaimedRecurring.length > 0;
 
-  return NextResponse.json({
+  return c.json({
     hasUnclaimedData: hasUnclaimed,
     unclaimed: {
       budgets: unclaimedBudgets.length,
@@ -90,4 +82,6 @@ export async function GET(request: NextRequest) {
       recurringPayments: unclaimedRecurring.length,
     },
   });
-}
+});
+
+export default route;

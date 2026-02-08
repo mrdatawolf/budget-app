@@ -13,6 +13,7 @@ import {
   DEFAULT_CSV_MAPPING,
   CsvAccount,
 } from '@/types/csv';
+import { api } from '@/lib/api-client';
 
 type WizardStep = 'upload' | 'mapping' | 'preview' | 'result';
 
@@ -93,17 +94,7 @@ export default function CsvImportModal({
       const formData = new FormData();
       formData.append('file', selectedFile);
 
-      const response = await fetch('/api/csv/preview', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to parse CSV');
-      }
-
-      const data: CsvPreviewResponse = await response.json();
+      const data = await api.csv.uploadPreview(formData) as CsvPreviewResponse;
       setPreviewData(data);
 
       // Apply auto-detected mapping
@@ -208,17 +199,12 @@ export default function CsvImportModal({
         formData.append('accountId', selectedAccountId);
       }
 
-      const response = await fetch('/api/csv/import', {
-        method: 'PUT', // PUT = preview mode
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to preview import');
-      }
-
-      const data = await response.json();
+      const data = await api.csv.previewImport(formData) as {
+        transactions: ParsedCsvRow[];
+        totalCount: number;
+        duplicateCount: number;
+        errors: CsvParseError[];
+      };
       setPreviewTransactions(data.transactions);
       setPreviewTotalCount(data.totalCount);
       setPreviewDuplicateCount(data.duplicateCount);
@@ -243,22 +229,11 @@ export default function CsvImportModal({
 
       // Create account first if new
       if (isNewAccount) {
-        const accountResponse = await fetch('/api/csv/accounts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            accountName,
-            institutionName,
-            columnMapping,
-          }),
-        });
-
-        if (!accountResponse.ok) {
-          const data = await accountResponse.json();
-          throw new Error(data.error || 'Failed to create account');
-        }
-
-        const newAccount = await accountResponse.json();
+        const newAccount = await api.csv.createAccount({
+          accountName,
+          institutionName,
+          columnMapping,
+        }) as { id: string };
         accountId = newAccount.id;
         setCreatedAccountId(accountId);
       }
@@ -268,17 +243,7 @@ export default function CsvImportModal({
       formData.append('file', file);
       formData.append('accountId', accountId);
 
-      const response = await fetch('/api/csv/import', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to import transactions');
-      }
-
-      const result: CsvImportResult = await response.json();
+      const result = await api.csv.importFile(formData) as CsvImportResult;
       setImportResult(result);
       setStep('result');
     } catch (err) {

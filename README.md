@@ -4,13 +4,13 @@ A modern zero-based budget tracking application built with Next.js, TypeScript, 
 
 ## Project Status
 
-**Current Version:** v2.0.0-alpha - Client-Server Separation
+**Current Version:** v2.0.0-alpha - Client-Server Separation (API fully migrated)
 **Last Updated:** 2026-02-07
 
 ### Tech Stack
-- **Architecture:** Monorepo with pnpm workspaces
-- **Client:** Next.js 16.x (App Router)
-- **API Server:** Hono (standalone, can run embedded or remote)
+- **Architecture:** Monorepo with pnpm workspaces (client-server separated)
+- **Client:** Next.js 16.x (App Router) — UI only, no API routes
+- **API Server:** Hono (standalone, 10 route files, 45+ HTTP handlers)
 - TypeScript
 - Tailwind CSS
 - ESLint
@@ -392,24 +392,26 @@ budget-app/
 │   │       └── index.ts
 │   └── server/                   # Standalone Hono API server
 │       └── src/
-│           ├── index.ts          # Entry point (health check)
-│           ├── routes/           # API route handlers (migrating)
-│           └── middleware/       # Auth middleware
-├── app/                          # Next.js client app
-│   ├── api/                      # API routes (migrating to packages/server)
-│   │   ├── auth/
-│   │   │   └── claim-data/       # Claim unclaimed data for user
-│   │   ├── budgets/              # Budget CRUD operations
-│   │   ├── budget-categories/    # Custom category CRUD
-│   │   ├── onboarding/           # Onboarding status CRUD
-│   │   ├── budget-items/         # Budget item management
-│   │   │   └── reorder/          # Drag-and-drop reorder endpoint
-│   │   ├── recurring-payments/   # Recurring payment CRUD
-│   │   ├── transactions/         # Transaction CRUD
-│   │   │   └── split/            # Split transaction operations
-│   │   └── teller/               # Bank integration
-│   │       ├── accounts/         # Account management
-│   │       └── sync/             # Transaction sync
+│           ├── index.ts          # Entry point, route mounting, CORS
+│           ├── types.ts          # AppEnv type
+│           ├── middleware/
+│           │   └── auth.ts       # Dual-mode auth (local/remote)
+│           ├── lib/
+│           │   ├── helpers.ts    # Shared helpers (getMonthlyContribution, CATEGORY_TYPES)
+│           │   ├── teller.ts     # Teller API mTLS client
+│           │   └── csvParser.ts  # CSV parsing utilities
+│           └── routes/           # All API route handlers
+│               ├── budgets.ts          # GET/PUT + /copy + /reset
+│               ├── budget-categories.ts # POST/DELETE
+│               ├── budget-items.ts     # CRUD + /reorder
+│               ├── transactions.ts     # CRUD + /split + /batch-assign
+│               ├── recurring-payments.ts # CRUD + /contribute + /reset
+│               ├── teller.ts           # /accounts + /sync
+│               ├── csv.ts             # /accounts + /preview + /import
+│               ├── onboarding.ts      # GET/POST/PUT/PATCH
+│               ├── auth.ts            # claim-data GET/POST
+│               └── database.ts        # GET/POST (no auth)
+├── app/                          # Next.js client app (UI only, no API routes)
 │   ├── insights/
 │   │   └── page.tsx              # Insights page
 │   ├── onboarding/
@@ -445,13 +447,13 @@ budget-app/
 │   ├── cloud.ts                  # Supabase cloud connection
 │   └── schema.ts                 # Drizzle schema
 ├── lib/
-│   ├── api-client.ts             # Centralized API client (NEW)
-│   ├── auth.ts                   # Authentication helpers
+│   ├── api-client.ts             # Centralized typed API client
+│   ├── auth.ts                   # Authentication helpers (legacy)
 │   ├── budgetHelpers.ts          # Data transformation utilities
 │   ├── chartColors.ts            # Category color mapping for charts
 │   ├── chartHelpers.ts           # Chart data transformation utilities
 │   ├── formatCurrency.ts         # Currency formatting utility
-│   └── teller.ts                 # Teller API client
+│   └── teller.ts                 # Teller API client (legacy, copied to server)
 ├── middleware.ts                 # Route protection
 ├── pnpm-workspace.yaml           # Monorepo workspace config
 └── types/

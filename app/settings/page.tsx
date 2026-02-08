@@ -124,14 +124,9 @@ export default function SettingsPage() {
     if (!confirm('Are you sure you want to delete this CSV account? Imported transactions will remain.')) return;
 
     try {
-      const response = await fetch(`/api/csv/accounts?id=${id}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        setCsvAccounts(csvAccounts.filter(a => a.id !== id));
-        toast.success('CSV account deleted');
-      }
+      await api.csv.deleteAccount(id);
+      setCsvAccounts(csvAccounts.filter(a => a.id !== id));
+      toast.success('CSV account deleted');
     } catch (error) {
       console.error('Error deleting CSV account:', error);
       toast.error('Failed to delete CSV account');

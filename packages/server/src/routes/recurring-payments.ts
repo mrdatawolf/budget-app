@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/db';
-import { recurringPayments, budgetItems, transactions, splitTransactions } from '@/db/schema';
+import { Hono } from 'hono';
+import { getDb } from '@budget-app/shared/db';
+import { recurringPayments, budgetItems, transactions, splitTransactions } from '@budget-app/shared/schema';
 import { eq, desc, and, isNull } from 'drizzle-orm';
-import { RecurringPayment, RecurringFrequency, CategoryType } from '@/types/budget';
-import { requireAuth, isAuthError } from '@/lib/auth';
+import { getUserId } from '../middleware/auth';
+import type { AppEnv } from '../types';
+import type { RecurringPayment, RecurringFrequency, CategoryType } from '@budget-app/shared/types';
 
 // Helper to calculate months in a frequency cycle (for expense accumulation)
 function getMonthsInCycle(frequency: RecurringFrequency): number {
@@ -17,8 +18,6 @@ function getMonthsInCycle(frequency: RecurringFrequency): number {
 }
 
 // Helper to calculate the monthly equivalent amount
-// For income: how much you expect per month (e.g., bi-weekly $1,937 → monthly $3,875)
-// For expenses: how much to set aside per month (e.g., quarterly $600 → monthly $200)
 function getMonthlyEquivalent(amount: number, frequency: RecurringFrequency): number {
   switch (frequency) {
     case 'weekly': return amount * 4;
@@ -42,6 +41,29 @@ function getDaysUntilDue(nextDueDate: string): number {
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 }
 
+// Helper to calculate next due date based on frequency
+function getNextDueDate(currentDueDate: string, frequency: RecurringFrequency): string {
+  const [y, m, d] = currentDueDate.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+
+  switch (frequency) {
+    case 'monthly':
+      date.setMonth(date.getMonth() + 1);
+      break;
+    case 'quarterly':
+      date.setMonth(date.getMonth() + 3);
+      break;
+    case 'semi-annually':
+      date.setMonth(date.getMonth() + 6);
+      break;
+    case 'annually':
+      date.setFullYear(date.getFullYear() + 1);
+      break;
+  }
+
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 // Transform DB record to RecurringPayment with computed fields
 function transformToRecurringPayment(
   record: typeof recurringPayments.$inferSelect,
@@ -53,23 +75,18 @@ function transformToRecurringPayment(
   const monthsInCycle = getMonthsInCycle(frequency);
   const amountNum = parseFloat(String(record.amount));
 
-  // Use calculated funded amount from transactions if provided, otherwise use DB value
   const fundedAmount = calculatedFundedAmount !== undefined ? calculatedFundedAmount : parseFloat(String(record.fundedAmount));
 
   let monthlyContribution: number;
   let displayTarget: number;
 
   if (isIncome) {
-    // Income: target is the monthly equivalent (e.g., bi-weekly $1,937 → $3,875/month)
-    // Income is received, not accumulated — each month is independent
     monthlyContribution = getMonthlyEquivalent(amountNum, frequency);
     displayTarget = monthlyContribution;
   } else if (isMonthly) {
-    // Monthly expense: target is the per-month amount
-    monthlyContribution = amountNum / monthsInCycle; // = amountNum
+    monthlyContribution = amountNum / monthsInCycle;
     displayTarget = monthlyContribution;
   } else {
-    // Non-monthly expense: accumulate toward the total cycle amount
     monthlyContribution = amountNum / monthsInCycle;
     displayTarget = amountNum;
   }
@@ -81,9 +98,9 @@ function transformToRecurringPayment(
     id: record.id,
     name: record.name,
     amount: amountNum,
-    frequency: frequency,
+    frequency,
     nextDueDate: record.nextDueDate,
-    fundedAmount: fundedAmount,
+    fundedAmount,
     categoryType: record.categoryType as CategoryType | null,
     isActive: record.isActive,
     createdAt: record.createdAt || undefined,
@@ -97,35 +114,31 @@ function transformToRecurringPayment(
   };
 }
 
-export async function GET(request: NextRequest) {
-  const authResult = await requireAuth();
-  if (isAuthError(authResult)) return authResult.error;
-  const { userId } = authResult;
+const route = new Hono<AppEnv>();
 
+// GET / - List all active recurring payments with computed fields
+route.get('/', async (c) => {
+  const userId = getUserId(c);
   const db = await getDb();
+
   const payments = await db.query.recurringPayments.findMany({
     where: and(eq(recurringPayments.userId, userId), eq(recurringPayments.isActive, true)),
     orderBy: [desc(recurringPayments.nextDueDate)],
   });
 
-  // Get current month/year for filtering transactions
   const now = new Date();
   const currentMonth = now.getMonth();
   const currentYear = now.getFullYear();
 
-  // Calculate funded amount from actual transactions on linked budget items
   const transformed = await Promise.all(payments.map(async (p) => {
     const isMonthly = p.frequency === 'monthly';
     const isIncome = p.categoryType === 'income';
 
-    // Find budget items linked to this recurring payment
     const linkedItems = await db.query.budgetItems.findMany({
       where: eq(budgetItems.recurringPaymentId, p.id),
       with: {
         category: {
-          with: {
-            budget: true,
-          },
+          with: { budget: true },
         },
         transactions: {
           where: isNull(transactions.deletedAt),
@@ -137,8 +150,6 @@ export async function GET(request: NextRequest) {
     let fundedAmount = 0;
 
     if (isMonthly || isIncome) {
-      // For monthly payments OR income: only count current month's transactions
-      // Income is received each month independently — no accumulation across months
       for (const item of linkedItems) {
         if (item.category?.budget?.month === currentMonth &&
             item.category?.budget?.year === currentYear) {
@@ -149,8 +160,6 @@ export async function GET(request: NextRequest) {
         }
       }
     } else {
-      // For non-monthly expenses: sum transactions across ALL budget items (all months)
-      // This accumulates contributions toward the total payment amount
       for (const item of linkedItems) {
         const txnTotal = item.transactions.reduce((sum, t) => sum + Math.abs(parseFloat(String(t.amount))), 0);
         const splitTotal = item.splitTransactions.reduce((sum, s) => sum + Math.abs(parseFloat(String(s.amount))), 0);
@@ -161,23 +170,20 @@ export async function GET(request: NextRequest) {
     return transformToRecurringPayment(p, fundedAmount, isMonthly, isIncome);
   }));
 
-  // Sort by days until due (ascending - soonest first)
   transformed.sort((a, b) => a.daysUntilDue - b.daysUntilDue);
 
-  return NextResponse.json(transformed);
-}
+  return c.json(transformed);
+});
 
-export async function POST(request: NextRequest) {
-  const authResult = await requireAuth();
-  if (isAuthError(authResult)) return authResult.error;
-  const { userId } = authResult;
-
+// POST / - Create a new recurring payment
+route.post('/', async (c) => {
+  const userId = getUserId(c);
   const db = await getDb();
-  const body = await request.json();
+  const body = await c.req.json();
   const { name, amount, frequency, nextDueDate, categoryType, budgetItemId } = body;
 
   if (!name || !amount || !frequency || !nextDueDate) {
-    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    return c.json({ error: 'Missing required fields' }, 400);
   }
 
   const [payment] = await db
@@ -202,29 +208,26 @@ export async function POST(request: NextRequest) {
       .where(eq(budgetItems.id, budgetItemId));
   }
 
-  return NextResponse.json(transformToRecurringPayment(payment));
-}
+  return c.json(transformToRecurringPayment(payment));
+});
 
-export async function PUT(request: NextRequest) {
-  const authResult = await requireAuth();
-  if (isAuthError(authResult)) return authResult.error;
-  const { userId } = authResult;
-
+// PUT / - Update a recurring payment
+route.put('/', async (c) => {
+  const userId = getUserId(c);
   const db = await getDb();
-  const body = await request.json();
+  const body = await c.req.json();
   const { id, name, amount, frequency, nextDueDate, fundedAmount, categoryType, isActive } = body;
 
   if (!id) {
-    return NextResponse.json({ error: 'Missing payment id' }, { status: 400 });
+    return c.json({ error: 'Missing payment id' }, 400);
   }
 
-  // Verify ownership
   const existing = await db.query.recurringPayments.findFirst({
     where: and(eq(recurringPayments.id, id), eq(recurringPayments.userId, userId)),
   });
 
   if (!existing) {
-    return NextResponse.json({ error: 'Recurring payment not found' }, { status: 404 });
+    return c.json({ error: 'Recurring payment not found' }, 404);
   }
 
   const updates: Partial<typeof recurringPayments.$inferInsert> = {
@@ -245,41 +248,114 @@ export async function PUT(request: NextRequest) {
     .where(eq(recurringPayments.id, id))
     .returning();
 
-  return NextResponse.json(transformToRecurringPayment(payment));
-}
+  return c.json(transformToRecurringPayment(payment));
+});
 
-export async function DELETE(request: NextRequest) {
-  const authResult = await requireAuth();
-  if (isAuthError(authResult)) return authResult.error;
-  const { userId } = authResult;
-
+// DELETE / - Delete a recurring payment
+route.delete('/', async (c) => {
+  const userId = getUserId(c);
   const db = await getDb();
-  const searchParams = request.nextUrl.searchParams;
-  const id = searchParams.get('id');
+  const id = c.req.query('id');
 
   if (!id) {
-    return NextResponse.json({ error: 'Missing payment id' }, { status: 400 });
+    return c.json({ error: 'Missing payment id' }, 400);
   }
 
-  const paymentId = id;
-
-  // Verify ownership
   const existing = await db.query.recurringPayments.findFirst({
-    where: and(eq(recurringPayments.id, paymentId), eq(recurringPayments.userId, userId)),
+    where: and(eq(recurringPayments.id, id), eq(recurringPayments.userId, userId)),
   });
 
   if (!existing) {
-    return NextResponse.json({ error: 'Recurring payment not found' }, { status: 404 });
+    return c.json({ error: 'Recurring payment not found' }, 404);
   }
 
   // First, unlink any budget items that reference this recurring payment
   await db
     .update(budgetItems)
     .set({ recurringPaymentId: null })
-    .where(eq(budgetItems.recurringPaymentId, paymentId));
+    .where(eq(budgetItems.recurringPaymentId, id));
 
   // Then delete the recurring payment
-  await db.delete(recurringPayments).where(eq(recurringPayments.id, paymentId));
+  await db.delete(recurringPayments).where(eq(recurringPayments.id, id));
 
-  return NextResponse.json({ success: true });
-}
+  return c.json({ success: true });
+});
+
+// ============================================================================
+// SUB-ROUTES
+// ============================================================================
+
+// POST /contribute - Add contribution to recurring payment's funded amount
+route.post('/contribute', async (c) => {
+  const userId = getUserId(c);
+  const db = await getDb();
+  const body = await c.req.json();
+  const { id, amount } = body;
+
+  if (!id || amount === undefined) {
+    return c.json({ error: 'Missing required fields' }, 400);
+  }
+
+  const payment = await db.query.recurringPayments.findFirst({
+    where: and(eq(recurringPayments.id, id), eq(recurringPayments.userId, userId)),
+  });
+
+  if (!payment) {
+    return c.json({ error: 'Payment not found' }, 404);
+  }
+
+  const newFundedAmount = Math.max(0, parseFloat(String(payment.fundedAmount)) + parseFloat(amount));
+
+  const [updated] = await db
+    .update(recurringPayments)
+    .set({
+      fundedAmount: String(newFundedAmount),
+      updatedAt: new Date(),
+    })
+    .where(eq(recurringPayments.id, id))
+    .returning();
+
+  return c.json({
+    success: true,
+    payment: updated,
+  });
+});
+
+// POST /reset - Mark payment as paid and advance to next cycle
+route.post('/reset', async (c) => {
+  const userId = getUserId(c);
+  const db = await getDb();
+  const body = await c.req.json();
+  const { id } = body;
+
+  if (!id) {
+    return c.json({ error: 'Missing payment id' }, 400);
+  }
+
+  const payment = await db.query.recurringPayments.findFirst({
+    where: and(eq(recurringPayments.id, id), eq(recurringPayments.userId, userId)),
+  });
+
+  if (!payment) {
+    return c.json({ error: 'Payment not found' }, 404);
+  }
+
+  const nextDate = getNextDueDate(payment.nextDueDate, payment.frequency as RecurringFrequency);
+
+  const [updated] = await db
+    .update(recurringPayments)
+    .set({
+      nextDueDate: nextDate,
+      fundedAmount: '0',
+      updatedAt: new Date(),
+    })
+    .where(eq(recurringPayments.id, id))
+    .returning();
+
+  return c.json({
+    success: true,
+    payment: updated,
+  });
+});
+
+export default route;

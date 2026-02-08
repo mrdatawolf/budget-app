@@ -152,13 +152,7 @@ export default function DatabaseManagement({ onDatabaseChange }: Props) {
     setActionInProgress('syncFromCloud');
     setMessage(null);
     try {
-      // syncFromCloud doesn't have an api method yet, use raw fetch
-      const response = await fetch('/api/database', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'syncFromCloud' }),
-      });
-      const data = await response.json();
+      const data = await api.database.syncFromCloud();
       if (data.success) {
         setMessage({ type: 'success', text: data.message });
         await fetchStatus();

@@ -139,28 +139,23 @@ export default function BudgetSummary({
   const fetchAndOpenSplitModal = async (parentTransactionId: string) => {
     try {
       // Fetch parent transaction and its splits in parallel
-      const [txnResponse, splitsResponse] = await Promise.all([
-        fetch(`/api/transactions?id=${parentTransactionId}`),
-        fetch(`/api/transactions/split?transactionId=${parentTransactionId}`),
+      const [parentTxn, splits] = await Promise.all([
+        api.transaction.get(parentTransactionId),
+        api.split.list(parentTransactionId),
       ]);
 
-      if (txnResponse.ok && splitsResponse.ok) {
-        const parentTxn = await txnResponse.json();
-        const splits = await splitsResponse.json();
-
-        // Set up the transaction to split
-        setTransactionToSplit({
-          id: parentTxn.id,
-          date: parentTxn.date,
-          description: parentTxn.description,
-          amount: parentTxn.amount,
-          type: parentTxn.type,
-          merchant: parentTxn.merchant,
-          status: null,
-        });
-        setExistingSplits(splits);
-        setIsSplitModalOpen(true);
-      }
+      // Set up the transaction to split
+      setTransactionToSplit({
+        id: parentTxn.id,
+        date: parentTxn.date,
+        description: parentTxn.description,
+        amount: parentTxn.amount,
+        type: parentTxn.type,
+        merchant: parentTxn.merchant ?? null,
+        status: null,
+      });
+      setExistingSplits(splits as unknown as ExistingSplit[]);
+      setIsSplitModalOpen(true);
     } catch (error) {
       console.error("Error fetching split transaction data:", error);
     }
@@ -250,13 +245,8 @@ export default function BudgetSummary({
   // Fetch deleted transactions
   const fetchDeleted = useCallback(async () => {
     try {
-      const response = await fetch(
-        `/api/transactions?deleted=true&month=${budget.month}&year=${budget.year}`,
-      );
-      if (response.ok) {
-        const data = await response.json();
-        setDeletedTxns(data);
-      }
+      const data = await api.transaction.listDeleted(budget.month, budget.year) as UncategorizedTransaction[];
+      setDeletedTxns(data);
     } catch (error) {
       console.error("Error fetching deleted transactions:", error);
     }
@@ -353,25 +343,14 @@ export default function BudgetSummary({
         budgetItemId: String(txn.suggestedBudgetItemId),
       }));
 
-      const response = await fetch("/api/transactions/batch-assign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assignments }),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        // Remove assigned transactions from the list
-        const assignedIds = new Set(assignments.map(a => a.transactionId));
-        setUncategorizedTxns(
-          uncategorizedTxns.filter((t) => !assignedIds.has(t.id)),
-        );
-        toast.success(`Applied ${result.assigned} suggestion${result.assigned !== 1 ? 's' : ''}`);
-        onRefresh?.();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to apply suggestions");
-      }
+      const result = await api.transaction.batchAssign(assignments);
+      // Remove assigned transactions from the list
+      const assignedIds = new Set(assignments.map(a => a.transactionId));
+      setUncategorizedTxns(
+        uncategorizedTxns.filter((t) => !assignedIds.has(t.id)),
+      );
+      toast.success(`Applied ${result.assigned} suggestion${result.assigned !== 1 ? 's' : ''}`);
+      onRefresh?.();
     } catch (error) {
       console.error("Error applying all suggestions:", error);
       toast.error("Failed to apply suggestions");

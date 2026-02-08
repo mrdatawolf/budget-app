@@ -1,78 +1,71 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/db';
-import { userOnboarding } from '@/db/schema';
+import { Hono } from 'hono';
+import { getDb } from '@budget-app/shared/db';
+import { userOnboarding } from '@budget-app/shared/schema';
 import { eq } from 'drizzle-orm';
-import { requireAuth, isAuthError } from '@/lib/auth';
+import { getUserId } from '../middleware/auth';
+import type { AppEnv } from '../types';
+
+const route = new Hono<AppEnv>();
 
 // GET - Check onboarding status
-export async function GET() {
-  const authResult = await requireAuth();
-  if (isAuthError(authResult)) return authResult.error;
-  const { userId } = authResult;
-
+route.get('/', async (c) => {
+  const userId = getUserId(c);
   const db = await getDb();
+
   const record = await db.query.userOnboarding?.findFirst({
     where: eq(userOnboarding.userId, userId),
   });
 
   if (!record) {
-    return NextResponse.json({ completed: false, currentStep: 1 });
+    return c.json({ completed: false, currentStep: 1 });
   }
 
-  return NextResponse.json({
+  return c.json({
     completed: !!record.completedAt || !!record.skippedAt,
     currentStep: record.currentStep,
     completedAt: record.completedAt,
     skippedAt: record.skippedAt,
   });
-}
+});
 
 // POST - Initialize onboarding record
-export async function POST() {
-  const authResult = await requireAuth();
-  if (isAuthError(authResult)) return authResult.error;
-  const { userId } = authResult;
-
+route.post('/', async (c) => {
+  const userId = getUserId(c);
   const db = await getDb();
+
   const existing = await db.select().from(userOnboarding).where(eq(userOnboarding.userId, userId));
   if (existing.length > 0) {
-    return NextResponse.json(existing[0]);
+    return c.json(existing[0]);
   }
 
   const [record] = await db.insert(userOnboarding).values({ userId }).returning();
-  return NextResponse.json(record);
-}
+  return c.json(record);
+});
 
 // PUT - Update current step
-export async function PUT(request: NextRequest) {
-  const authResult = await requireAuth();
-  if (isAuthError(authResult)) return authResult.error;
-  const { userId } = authResult;
-
+route.put('/', async (c) => {
+  const userId = getUserId(c);
   const db = await getDb();
-  const { step } = await request.json();
+  const { step } = await c.req.json();
 
   const existing = await db.select().from(userOnboarding).where(eq(userOnboarding.userId, userId));
   if (existing.length === 0) {
     const [record] = await db.insert(userOnboarding).values({ userId, currentStep: step }).returning();
-    return NextResponse.json(record);
+    return c.json(record);
   }
 
   await db.update(userOnboarding)
     .set({ currentStep: step })
     .where(eq(userOnboarding.userId, userId));
 
-  return NextResponse.json({ success: true });
-}
+  return c.json({ success: true });
+});
 
 // PATCH - Complete or skip onboarding
-export async function PATCH(request: NextRequest) {
-  const authResult = await requireAuth();
-  if (isAuthError(authResult)) return authResult.error;
-  const { userId } = authResult;
-
+route.patch('/', async (c) => {
+  const userId = getUserId(c);
   const db = await getDb();
-  const { action } = await request.json();
+  const { action } = await c.req.json();
 
   const updates: Record<string, unknown> = {};
   if (action === 'complete') {
@@ -89,5 +82,7 @@ export async function PATCH(request: NextRequest) {
     await db.update(userOnboarding).set(updates).where(eq(userOnboarding.userId, userId));
   }
 
-  return NextResponse.json({ success: true });
-}
+  return c.json({ success: true });
+});
+
+export default route;

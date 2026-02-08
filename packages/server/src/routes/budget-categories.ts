@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/db';
-import { budgetCategories, budgetItems, transactions, splitTransactions, budgets } from '@/db/schema';
-import { eq, and, inArray } from 'drizzle-orm';
-import { requireAuth, isAuthError } from '@/lib/auth';
+import { Hono } from 'hono';
+import { getDb } from '@budget-app/shared/db';
+import { budgetCategories, budgetItems, transactions, splitTransactions, budgets } from '@budget-app/shared/schema';
+import { eq, inArray } from 'drizzle-orm';
+import { getUserId } from '../middleware/auth';
+import type { AppEnv } from '../types';
 
 function slugify(name: string): string {
   return name
@@ -12,40 +13,40 @@ function slugify(name: string): string {
     .replace(/^-|-$/g, '');
 }
 
-export async function POST(request: NextRequest) {
-  const authResult = await requireAuth();
-  if (isAuthError(authResult)) return authResult.error;
-  const { userId } = authResult;
+const route = new Hono<AppEnv>();
 
+// POST / - Create a new custom category
+route.post('/', async (c) => {
+  const userId = getUserId(c);
   const db = await getDb();
-  const body = await request.json();
+  const body = await c.req.json();
   const { budgetId, name, emoji } = body;
 
   if (!budgetId || !name?.trim() || !emoji) {
-    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    return c.json({ error: 'Missing required fields' }, 400);
   }
 
   // Verify budget ownership
   const budget = await db.query.budgets.findFirst({
-    where: and(eq(budgets.id, budgetId), eq(budgets.userId, userId)),
+    where: eq(budgets.id, budgetId),
     with: { categories: true },
   });
 
-  if (!budget) {
-    return NextResponse.json({ error: 'Budget not found' }, { status: 404 });
+  if (!budget || budget.userId !== userId) {
+    return c.json({ error: 'Budget not found' }, 404);
   }
 
   const categoryType = slugify(name);
 
   // Check for duplicate categoryType in this budget
-  const existing = budget.categories.find(c => c.categoryType === categoryType);
+  const existing = budget.categories.find(cat => cat.categoryType === categoryType);
   if (existing) {
-    return NextResponse.json({ error: 'A category with this name already exists' }, { status: 409 });
+    return c.json({ error: 'A category with this name already exists' }, 409);
   }
 
   // Determine order (after all existing categories)
   const maxOrder = budget.categories.length > 0
-    ? Math.max(...budget.categories.map(c => c.categoryOrder ?? 0))
+    ? Math.max(...budget.categories.map(cat => cat.categoryOrder ?? 0))
     : -1;
 
   const [newCategory] = await db.insert(budgetCategories).values({
@@ -56,20 +57,17 @@ export async function POST(request: NextRequest) {
     categoryOrder: maxOrder + 1,
   }).returning();
 
-  return NextResponse.json(newCategory);
-}
+  return c.json(newCategory);
+});
 
-export async function DELETE(request: NextRequest) {
-  const authResult = await requireAuth();
-  if (isAuthError(authResult)) return authResult.error;
-  const { userId } = authResult;
-
+// DELETE / - Delete a custom category (cascade delete items/transactions)
+route.delete('/', async (c) => {
+  const userId = getUserId(c);
   const db = await getDb();
-  const searchParams = request.nextUrl.searchParams;
-  const id = searchParams.get('id');
+  const id = c.req.query('id');
 
   if (!id) {
-    return NextResponse.json({ error: 'Invalid category id' }, { status: 400 });
+    return c.json({ error: 'Invalid category id' }, 400);
   }
 
   // Verify ownership through budget
@@ -82,13 +80,13 @@ export async function DELETE(request: NextRequest) {
   });
 
   if (!category || category.budget.userId !== userId) {
-    return NextResponse.json({ error: 'Category not found' }, { status: 404 });
+    return c.json({ error: 'Category not found' }, 404);
   }
 
   // Don't allow deleting default categories
   const defaultTypes = ['income', 'giving', 'household', 'transportation', 'food', 'personal', 'insurance', 'saving'];
   if (defaultTypes.includes(category.categoryType)) {
-    return NextResponse.json({ error: 'Cannot delete default categories' }, { status: 400 });
+    return c.json({ error: 'Cannot delete default categories' }, 400);
   }
 
   // Cascade delete: get item IDs, delete split transactions, transactions, items, then category
@@ -98,15 +96,17 @@ export async function DELETE(request: NextRequest) {
     // Delete split transactions referencing these items
     await db.delete(splitTransactions).where(inArray(splitTransactions.budgetItemId, itemIds));
 
-    // Delete transactions referencing these items (set null handled by FK, but clean up direct ones)
+    // Unlink transactions from these items
     await db.update(transactions).set({ budgetItemId: null }).where(inArray(transactions.budgetItemId, itemIds));
 
-    // Delete budget items (cascade from category delete will handle this, but be explicit)
+    // Delete budget items
     await db.delete(budgetItems).where(inArray(budgetItems.id, itemIds));
   }
 
   // Delete the category
   await db.delete(budgetCategories).where(eq(budgetCategories.id, id));
 
-  return NextResponse.json({ success: true });
-}
+  return c.json({ success: true });
+});
+
+export default route;

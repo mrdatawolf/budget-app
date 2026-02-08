@@ -99,18 +99,63 @@ async function request<T>(
     headers,
   });
 
+  const text = await response.text();
+
   if (!response.ok) {
-    let body: unknown;
+    let body: unknown = text;
     try {
-      body = await response.json();
+      body = JSON.parse(text);
     } catch {
-      body = await response.text();
+      // body stays as text
     }
     throw new ApiError(response.status, response.statusText, body);
   }
 
   // Handle empty responses
+  if (!text) {
+    return undefined as T;
+  }
+
+  return JSON.parse(text) as T;
+}
+
+/**
+ * Make an API request with FormData body (for file uploads).
+ * Does NOT set Content-Type header (browser sets it with boundary).
+ */
+async function requestFormData<T>(
+  endpoint: string,
+  formData: FormData,
+  method: string = 'POST'
+): Promise<T> {
+  const baseUrl = getBaseUrl();
+  const url = `${baseUrl}${endpoint}`;
+
+  const headers: HeadersInit = {};
+
+  // Add auth header for remote mode
+  if (!isLocalMode() && authToken) {
+    (headers as Record<string, string>)['Authorization'] = `Bearer ${authToken}`;
+  }
+
+  const response = await fetch(url, {
+    method,
+    headers,
+    body: formData,
+  });
+
   const text = await response.text();
+
+  if (!response.ok) {
+    let body: unknown = text;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      // body stays as text
+    }
+    throw new ApiError(response.status, response.statusText, body);
+  }
+
   if (!text) {
     return undefined as T;
   }
@@ -224,10 +269,10 @@ export const itemApi = {
   /**
    * Reorder items within a category.
    */
-  async reorder(categoryId: string, itemIds: string[]): Promise<void> {
+  async reorder(items: { id: string; order: number }[]): Promise<void> {
     return request('/api/budget-items/reorder', {
-      method: 'POST',
-      body: JSON.stringify({ categoryId, itemIds }),
+      method: 'PUT',
+      body: JSON.stringify({ items }),
     });
   },
 };
@@ -238,6 +283,13 @@ export const itemApi = {
 
 export const transactionApi = {
   /**
+   * Get a single transaction by ID.
+   */
+  async get(id: string): Promise<Transaction> {
+    return request(`/api/transactions?id=${id}`);
+  },
+
+  /**
    * Get all transactions (optionally filtered).
    */
   async list(filters?: { budgetItemId?: string }): Promise<Transaction[]> {
@@ -247,6 +299,13 @@ export const transactionApi = {
     }
     const query = params.toString();
     return request(`/api/transactions${query ? `?${query}` : ''}`);
+  },
+
+  /**
+   * Get soft-deleted transactions for a specific month/year.
+   */
+  async listDeleted(month: number, year: number): Promise<Transaction[]> {
+    return request(`/api/transactions?deleted=true&month=${month}&year=${year}`);
   },
 
   /**
@@ -303,12 +362,12 @@ export const transactionApi = {
   },
 
   /**
-   * Batch assign transactions to a budget item.
+   * Batch assign transactions to budget items.
    */
-  async batchAssign(transactionIds: string[], budgetItemId: string): Promise<void> {
+  async batchAssign(assignments: { transactionId: string; budgetItemId: string }[]): Promise<{ assigned: number; skipped: number; errors?: string[] }> {
     return request('/api/transactions/batch-assign', {
       method: 'POST',
-      body: JSON.stringify({ transactionIds, budgetItemId }),
+      body: JSON.stringify({ assignments }),
     });
   },
 };
@@ -321,25 +380,25 @@ export const splitApi = {
   /**
    * Get splits for a transaction.
    */
-  async list(parentTransactionId: string): Promise<SplitTransaction[]> {
-    return request(`/api/transactions/split?parentTransactionId=${parentTransactionId}`);
+  async list(transactionId: string): Promise<SplitTransaction[]> {
+    return request(`/api/transactions/split?transactionId=${transactionId}`);
   },
 
   /**
    * Create/update splits for a transaction.
    */
-  async save(parentTransactionId: string, splits: { budgetItemId: string; amount: number; description?: string }[]): Promise<void> {
+  async save(transactionId: string, splits: { budgetItemId: string; amount: number; description?: string }[]): Promise<void> {
     return request('/api/transactions/split', {
       method: 'POST',
-      body: JSON.stringify({ parentTransactionId, splits }),
+      body: JSON.stringify({ transactionId, splits }),
     });
   },
 
   /**
    * Delete all splits for a transaction (unsplit).
    */
-  async delete(parentTransactionId: string): Promise<void> {
-    return request(`/api/transactions/split?parentTransactionId=${parentTransactionId}`, {
+  async delete(transactionId: string): Promise<void> {
+    return request(`/api/transactions/split?transactionId=${transactionId}`, {
       method: 'DELETE',
     });
   },
@@ -484,10 +543,9 @@ export const csvApi = {
    * Create a CSV account.
    */
   async createAccount(data: {
-    institutionName: string;
     accountName: string;
-    accountType: string;
-    accountSubtype: string;
+    institutionName: string;
+    columnMapping?: unknown;
   }): Promise<unknown> {
     return request('/api/csv/accounts', {
       method: 'POST',
@@ -496,23 +554,33 @@ export const csvApi = {
   },
 
   /**
-   * Preview CSV file.
+   * Delete a CSV account.
    */
-  async preview(accountId: string, csvText: string): Promise<unknown> {
-    return request('/api/csv/preview', {
-      method: 'POST',
-      body: JSON.stringify({ accountId, csvText }),
+  async deleteAccount(id: string): Promise<void> {
+    return request(`/api/csv/accounts?id=${id}`, {
+      method: 'DELETE',
     });
   },
 
   /**
-   * Import transactions from CSV.
+   * Upload and preview a CSV file (parse headers and sample rows).
    */
-  async import(accountId: string, csvText: string, mapping: unknown): Promise<unknown> {
-    return request('/api/csv/import', {
-      method: 'POST',
-      body: JSON.stringify({ accountId, csvText, mapping }),
-    });
+  async uploadPreview(formData: FormData): Promise<unknown> {
+    return requestFormData('/api/csv/preview', formData, 'POST');
+  },
+
+  /**
+   * Preview import with column mapping applied (returns parsed transactions).
+   */
+  async previewImport(formData: FormData): Promise<unknown> {
+    return requestFormData('/api/csv/import', formData, 'PUT');
+  },
+
+  /**
+   * Import transactions from CSV file.
+   */
+  async importFile(formData: FormData): Promise<unknown> {
+    return requestFormData('/api/csv/import', formData, 'POST');
   },
 };
 
@@ -567,11 +635,14 @@ export const databaseApi = {
    * Get database status.
    */
   async getStatus(): Promise<{
-    initialized: boolean;
-    hasError: boolean;
-    errorMessage: string | null;
-    dbPath: string;
+    status: {
+      initialized: boolean;
+      hasError: boolean;
+      errorMessage: string | null;
+      dbPath: string;
+    };
     backups: { path: string; timestamp: string }[];
+    hasCloudConnection: boolean;
   }> {
     return request('/api/database');
   },
@@ -612,6 +683,16 @@ export const databaseApi = {
     return request('/api/database', {
       method: 'POST',
       body: JSON.stringify({ action: 'deleteBackup', backupPath }),
+    });
+  },
+
+  /**
+   * Sync from cloud database (replace local with cloud data).
+   */
+  async syncFromCloud(): Promise<{ success: boolean; message: string }> {
+    return request('/api/database', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'syncFromCloud' }),
     });
   },
 };

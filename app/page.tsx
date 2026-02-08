@@ -529,7 +529,7 @@ function Home() {
                             onClick={async () => {
                               setIsResetting(true);
                               try {
-                                await api.budget.reset(budget.id, resetMode!);
+                                await api.budget.reset(budget.id!, resetMode!);
                                 refreshBudget();
                                 setIsResetBudgetOpen(false);
                                 setResetMode(null);
