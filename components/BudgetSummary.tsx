@@ -18,6 +18,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { useUncategorizedCount } from "@/contexts/UncategorizedCountContext";
 import { formatCurrency } from "@/lib/formatCurrency";
 import { formatDateShort, formatDateMonth, formatDateDay, toLocalDateString } from "@/lib/dateHelpers";
+import { api } from "@/lib/api-client";
 
 interface SelectedBudgetItem {
   item: BudgetItem;
@@ -138,28 +139,23 @@ export default function BudgetSummary({
   const fetchAndOpenSplitModal = async (parentTransactionId: string) => {
     try {
       // Fetch parent transaction and its splits in parallel
-      const [txnResponse, splitsResponse] = await Promise.all([
-        fetch(`/api/transactions?id=${parentTransactionId}`),
-        fetch(`/api/transactions/split?transactionId=${parentTransactionId}`),
+      const [parentTxn, splits] = await Promise.all([
+        api.transaction.get(parentTransactionId),
+        api.split.list(parentTransactionId),
       ]);
 
-      if (txnResponse.ok && splitsResponse.ok) {
-        const parentTxn = await txnResponse.json();
-        const splits = await splitsResponse.json();
-
-        // Set up the transaction to split
-        setTransactionToSplit({
-          id: parentTxn.id,
-          date: parentTxn.date,
-          description: parentTxn.description,
-          amount: parentTxn.amount,
-          type: parentTxn.type,
-          merchant: parentTxn.merchant,
-          status: null,
-        });
-        setExistingSplits(splits);
-        setIsSplitModalOpen(true);
-      }
+      // Set up the transaction to split
+      setTransactionToSplit({
+        id: parentTxn.id,
+        date: parentTxn.date,
+        description: parentTxn.description,
+        amount: parentTxn.amount,
+        type: parentTxn.type,
+        merchant: parentTxn.merchant ?? null,
+        status: null,
+      });
+      setExistingSplits(splits as unknown as ExistingSplit[]);
+      setIsSplitModalOpen(true);
     } catch (error) {
       console.error("Error fetching split transaction data:", error);
     }
@@ -212,11 +208,8 @@ export default function BudgetSummary({
   const fetchUncategorized = useCallback(async () => {
     setIsLoadingUncategorized(true);
     try {
-      const response = await fetch(`/api/teller/sync?month=${budget.month}&year=${budget.year}`);
-      if (response.ok) {
-        const data = await response.json();
-        setUncategorizedTxns(data);
-      }
+      const data = await api.teller.getTransactions(budget.month, budget.year) as UncategorizedTransaction[];
+      setUncategorizedTxns(data);
     } catch (error) {
       console.error("Error fetching uncategorized transactions:", error);
     } finally {
@@ -252,13 +245,8 @@ export default function BudgetSummary({
   // Fetch deleted transactions
   const fetchDeleted = useCallback(async () => {
     try {
-      const response = await fetch(
-        `/api/transactions?deleted=true&month=${budget.month}&year=${budget.year}`,
-      );
-      if (response.ok) {
-        const data = await response.json();
-        setDeletedTxns(data);
-      }
+      const data = await api.transaction.listDeleted(budget.month, budget.year) as UncategorizedTransaction[];
+      setDeletedTxns(data);
     } catch (error) {
       console.error("Error fetching deleted transactions:", error);
     }
@@ -267,11 +255,8 @@ export default function BudgetSummary({
   // Fetch linked accounts
   const fetchLinkedAccounts = useCallback(async () => {
     try {
-      const response = await fetch("/api/teller/accounts");
-      if (response.ok) {
-        const data = await response.json();
-        setLinkedAccounts(data);
-      }
+      const data = await api.teller.listAccounts() as LinkedAccount[];
+      setLinkedAccounts(data);
     } catch (error) {
       console.error("Error fetching linked accounts:", error);
     }
@@ -294,24 +279,17 @@ export default function BudgetSummary({
   const handleSync = async () => {
     setIsSyncing(true);
     try {
-      const response = await fetch("/api/teller/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      if (response.ok) {
-        const result = await response.json();
-        const messages = [];
-        if (result.synced > 0) messages.push(`${result.synced} new`);
-        if (result.updated > 0) messages.push(`${result.updated} updated`);
-        if (messages.length > 0) {
-          toast.success(`Synced: ${messages.join(", ")}`);
-        } else {
-          toast.info("No new transactions to sync");
-        }
-        await fetchUncategorized();
-        onRefresh?.();
+      const result = await api.teller.syncTransactions() as { synced: number; updated?: number };
+      const messages = [];
+      if (result.synced > 0) messages.push(`${result.synced} new`);
+      if (result.updated && result.updated > 0) messages.push(`${result.updated} updated`);
+      if (messages.length > 0) {
+        toast.success(`Synced: ${messages.join(", ")}`);
+      } else {
+        toast.info("No new transactions to sync");
       }
+      await fetchUncategorized();
+      onRefresh?.();
     } catch (error) {
       console.error("Error syncing:", error);
     } finally {
@@ -323,27 +301,15 @@ export default function BudgetSummary({
     if (!selectedBudgetItemId) return;
 
     try {
-      const response = await fetch("/api/transactions", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: transactionId,
-          budgetItemId: selectedBudgetItemId,
-        }),
+      await api.transaction.update(transactionId, {
+        budgetItemId: selectedBudgetItemId,
       });
-
-      if (response.ok) {
-        setUncategorizedTxns(
-          uncategorizedTxns.filter((t) => t.id !== transactionId),
-        );
-        setAssigningId(null);
-        setSelectedBudgetItemId("");
-        onRefresh?.();
-      } else {
-        const errorData = await response.json();
-        toast.error(errorData.error || "Failed to assign transaction");
-        console.error("Error assigning transaction:", errorData);
-      }
+      setUncategorizedTxns(
+        uncategorizedTxns.filter((t) => t.id !== transactionId),
+      );
+      setAssigningId(null);
+      setSelectedBudgetItemId("");
+      onRefresh?.();
     } catch (error) {
       console.error("Error assigning transaction:", error);
       toast.error("Failed to assign transaction");
@@ -377,25 +343,14 @@ export default function BudgetSummary({
         budgetItemId: String(txn.suggestedBudgetItemId),
       }));
 
-      const response = await fetch("/api/transactions/batch-assign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assignments }),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        // Remove assigned transactions from the list
-        const assignedIds = new Set(assignments.map(a => a.transactionId));
-        setUncategorizedTxns(
-          uncategorizedTxns.filter((t) => !assignedIds.has(t.id)),
-        );
-        toast.success(`Applied ${result.assigned} suggestion${result.assigned !== 1 ? 's' : ''}`);
-        onRefresh?.();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to apply suggestions");
-      }
+      const result = await api.transaction.batchAssign(assignments);
+      // Remove assigned transactions from the list
+      const assignedIds = new Set(assignments.map(a => a.transactionId));
+      setUncategorizedTxns(
+        uncategorizedTxns.filter((t) => !assignedIds.has(t.id)),
+      );
+      toast.success(`Applied ${result.assigned} suggestion${result.assigned !== 1 ? 's' : ''}`);
+      onRefresh?.();
     } catch (error) {
       console.error("Error applying all suggestions:", error);
       toast.error("Failed to apply suggestions");
@@ -408,22 +363,17 @@ export default function BudgetSummary({
     if (!confirm("Delete this transaction?")) return;
 
     try {
-      const response = await fetch(`/api/transactions?id=${transactionId}`, {
-        method: "DELETE",
-      });
-
-      if (response.ok) {
-        // Move to deleted list
-        const deletedTxn = uncategorizedTxns.find(
-          (t) => t.id === transactionId,
-        );
-        if (deletedTxn) {
-          setDeletedTxns([...deletedTxns, deletedTxn]);
-        }
-        setUncategorizedTxns(
-          uncategorizedTxns.filter((t) => t.id !== transactionId),
-        );
+      await api.transaction.delete(transactionId);
+      // Move to deleted list
+      const deletedTxn = uncategorizedTxns.find(
+        (t) => t.id === transactionId,
+      );
+      if (deletedTxn) {
+        setDeletedTxns([...deletedTxns, deletedTxn]);
       }
+      setUncategorizedTxns(
+        uncategorizedTxns.filter((t) => t.id !== transactionId),
+      );
     } catch (error) {
       console.error("Error deleting transaction:", error);
     }
@@ -431,21 +381,14 @@ export default function BudgetSummary({
 
   const handleRestoreTransaction = async (transactionId: string) => {
     try {
-      const response = await fetch("/api/transactions", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: transactionId }),
-      });
-
-      if (response.ok) {
-        // Move from deleted to uncategorized
-        const restoredTxn = deletedTxns.find((t) => t.id === transactionId);
-        if (restoredTxn) {
-          setUncategorizedTxns([...uncategorizedTxns, restoredTxn]);
-        }
-        setDeletedTxns(deletedTxns.filter((t) => t.id !== transactionId));
-        onRefresh?.();
+      await api.transaction.restore(transactionId);
+      // Move from deleted to uncategorized
+      const restoredTxn = deletedTxns.find((t) => t.id === transactionId);
+      if (restoredTxn) {
+        setUncategorizedTxns([...uncategorizedTxns, restoredTxn]);
       }
+      setDeletedTxns(deletedTxns.filter((t) => t.id !== transactionId));
+      onRefresh?.();
     } catch (error) {
       console.error("Error restoring transaction:", error);
     }
@@ -485,15 +428,8 @@ export default function BudgetSummary({
     merchant?: string;
   }) => {
     try {
-      const response = await fetch("/api/transactions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(transaction),
-      });
-
-      if (response.ok) {
-        onRefresh?.();
-      }
+      await api.transaction.create(transaction);
+      onRefresh?.();
     } catch (error) {
       console.error("Error adding transaction:", error);
     }
@@ -510,16 +446,16 @@ export default function BudgetSummary({
     merchant?: string;
   }) => {
     try {
-      const response = await fetch("/api/transactions", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(transaction),
+      await api.transaction.update(transaction.id, {
+        budgetItemId: transaction.budgetItemId,
+        date: transaction.date,
+        description: transaction.description,
+        amount: transaction.amount,
+        type: transaction.type,
+        merchant: transaction.merchant,
       });
-
-      if (response.ok) {
-        setTransactionToEdit(null);
-        onRefresh?.();
-      }
+      setTransactionToEdit(null);
+      onRefresh?.();
     } catch (error) {
       console.error("Error editing transaction:", error);
     }
@@ -527,15 +463,10 @@ export default function BudgetSummary({
 
   const handleDeleteFromModal = async (id: string) => {
     try {
-      const response = await fetch(`/api/transactions?id=${id}`, {
-        method: "DELETE",
-      });
-
-      if (response.ok) {
-        setTransactionToEdit(null);
-        await fetchDeleted();
-        onRefresh?.();
-      }
+      await api.transaction.delete(id);
+      setTransactionToEdit(null);
+      await fetchDeleted();
+      onRefresh?.();
     } catch (error) {
       console.error("Error deleting transaction:", error);
     }
@@ -585,26 +516,13 @@ export default function BudgetSummary({
     if (!transactionToSplit) return;
 
     try {
-      const response = await fetch("/api/transactions/split", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transactionId: transactionToSplit.id,
-          splits,
-        }),
-      });
-
-      if (response.ok) {
-        // Remove from uncategorized list since it's now split
-        setUncategorizedTxns(
-          uncategorizedTxns.filter((t) => t.id !== transactionToSplit.id),
-        );
-        closeSplitModal();
-        onRefresh?.();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to split transaction");
-      }
+      await api.split.save(transactionToSplit.id, splits);
+      // Remove from uncategorized list since it's now split
+      setUncategorizedTxns(
+        uncategorizedTxns.filter((t) => t.id !== transactionToSplit.id),
+      );
+      closeSplitModal();
+      onRefresh?.();
     } catch (error) {
       console.error("Error splitting transaction:", error);
       toast.error("Failed to split transaction");

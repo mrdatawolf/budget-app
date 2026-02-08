@@ -9,6 +9,7 @@ import { formatTimestamp } from '@/lib/dateHelpers';
 import CsvImportModal from '@/components/csv/CsvImportModal';
 import DatabaseManagement from '@/components/DatabaseManagement';
 import { CsvAccount } from '@/types/csv';
+import { api } from '@/lib/api-client';
 
 interface LinkedAccount {
   id: string;
@@ -51,11 +52,8 @@ export default function SettingsPage() {
 
   const fetchAccounts = useCallback(async () => {
     try {
-      const response = await fetch('/api/teller/accounts');
-      if (response.ok) {
-        const data = await response.json();
-        setAccounts(data);
-      }
+      const data = await api.teller.listAccounts();
+      setAccounts(data as LinkedAccount[]);
     } catch (error) {
       console.error('Error fetching accounts:', error);
     } finally {
@@ -65,11 +63,8 @@ export default function SettingsPage() {
 
   const fetchCsvAccounts = useCallback(async () => {
     try {
-      const response = await fetch('/api/csv/accounts');
-      if (response.ok) {
-        const data = await response.json();
-        setCsvAccounts(data);
-      }
+      const data = await api.csv.listAccounts();
+      setCsvAccounts(data as CsvAccount[]);
     } catch (error) {
       console.error('Error fetching CSV accounts:', error);
     }
@@ -90,23 +85,13 @@ export default function SettingsPage() {
       applicationId: process.env.NEXT_PUBLIC_TELLER_APP_ID || '',
       onSuccess: async (enrollment) => {
         try {
-          const response = await fetch('/api/teller/accounts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              accessToken: enrollment.accessToken,
-              enrollment: enrollment.enrollment,
-            }),
-          });
-
-          if (response.ok) {
-            fetchAccounts();
-            toast.success('Bank account connected successfully');
-          } else {
-            const errorData = await response.json();
-            console.error('Failed to save account:', errorData);
-            toast.error(`Failed to save account: ${errorData.error || 'Unknown error'}`);
-          }
+          await api.teller.linkAccount(
+            enrollment.enrollment.id,
+            enrollment.accessToken,
+            [] // accounts will be fetched by the backend
+          );
+          fetchAccounts();
+          toast.success('Bank account connected successfully');
         } catch (error) {
           console.error('Error saving account:', error);
           toast.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -128,13 +113,8 @@ export default function SettingsPage() {
     if (!confirm('Are you sure you want to disconnect this account?')) return;
 
     try {
-      const response = await fetch(`/api/teller/accounts?id=${id}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        setAccounts(accounts.filter(a => a.id !== id));
-      }
+      await api.teller.unlinkAccount(id);
+      setAccounts(accounts.filter(a => a.id !== id));
     } catch (error) {
       console.error('Error deleting account:', error);
     }
@@ -144,14 +124,9 @@ export default function SettingsPage() {
     if (!confirm('Are you sure you want to delete this CSV account? Imported transactions will remain.')) return;
 
     try {
-      const response = await fetch(`/api/csv/accounts?id=${id}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        setCsvAccounts(csvAccounts.filter(a => a.id !== id));
-        toast.success('CSV account deleted');
-      }
+      await api.csv.deleteAccount(id);
+      setCsvAccounts(csvAccounts.filter(a => a.id !== id));
+      toast.success('CSV account deleted');
     } catch (error) {
       console.error('Error deleting CSV account:', error);
       toast.error('Failed to delete CSV account');
@@ -168,17 +143,9 @@ export default function SettingsPage() {
     setSyncResult(null);
 
     try {
-      const response = await fetch('/api/teller/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        setSyncResult({ synced: result.synced, skipped: result.skipped });
-        fetchAccounts(); // Refresh to update lastSyncedAt
-      }
+      const result = await api.teller.syncTransactions() as { synced: number; skipped: number };
+      setSyncResult({ synced: result.synced, skipped: result.skipped });
+      fetchAccounts(); // Refresh to update lastSyncedAt
     } catch (error) {
       console.error('Error syncing:', error);
     } finally {

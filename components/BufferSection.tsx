@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { api } from '@/lib/api-client';
 
 interface BufferSectionProps {
   budgetId?: string;
@@ -18,14 +19,7 @@ export default function BufferSection({ budgetId, buffer, onRefresh }: BufferSec
     }
 
     try {
-      await fetch('/api/budgets', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: budgetId,
-          buffer: value,
-        }),
-      });
+      await api.budget.update(budgetId, { buffer: value });
       onRefresh();
     } catch (error) {
       console.error('Error updating buffer:', error);

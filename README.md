@@ -4,17 +4,19 @@ A modern zero-based budget tracking application built with Next.js, TypeScript, 
 
 ## Project Status
 
-**Current Version:** v1.9.0 - Native iOS App (SwiftUI)
-**Last Updated:** 2026-02-04
+**Current Version:** v2.0.0-alpha - Client-Server Separation (API fully migrated)
+**Last Updated:** 2026-02-07
 
 ### Tech Stack
-- Next.js 16.x (App Router)
+- **Architecture:** Monorepo with pnpm workspaces (client-server separated)
+- **Client:** Next.js 16.x (App Router) — UI only, no API routes
+- **API Server:** Hono (standalone, 10 route files, 45+ HTTP handlers)
 - TypeScript
 - Tailwind CSS
 - ESLint
 - Drizzle ORM
-- Supabase (PostgreSQL) via Drizzle ORM
-- Clerk (authentication)
+- PGlite (local PostgreSQL) + Supabase (cloud sync)
+- Clerk (authentication for cloud sync)
 - Teller API (bank integration)
 - React Icons (react-icons)
 - D3.js + d3-sankey (charts)
@@ -282,8 +284,9 @@ TELLER_ENVIRONMENT=production
 
 1. **Install dependencies:**
    ```bash
-   npm install
+   pnpm install
    ```
+   Note: This project uses pnpm workspaces. Install pnpm with `npm install -g pnpm` if needed.
 
 2. **Set up environment variables:**
    ```bash
@@ -302,6 +305,53 @@ TELLER_ENVIRONMENT=production
    ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+## Architecture (v2.0.0+)
+
+The app is being restructured into a client-server architecture:
+
+```
+┌─────────────────┐         ┌─────────────────┐         ┌─────────────────┐
+│     Client      │  HTTP   │   API Server    │   SQL   │    Database     │
+│   (Next.js)     │ ──────► │    (Hono)       │ ──────► │    (PGlite/     │
+│                 │         │                 │         │    Supabase)    │
+└─────────────────┘         └─────────────────┘         └─────────────────┘
+```
+
+**Key benefits:**
+- **Local mode:** Client starts embedded server, works completely offline
+- **Remote mode:** Client connects to hosted API server for multi-device sync
+- **Separation of concerns:** API can scale independently from the frontend
+
+### Development Commands
+
+```bash
+# Client (Next.js)
+npm run dev              # Start Next.js dev server on :3000
+
+# API Server (Hono)
+pnpm server:dev          # Start Hono API server on :3001
+pnpm server:build        # Build the API server
+pnpm server:start        # Start production API server
+
+# Database
+npm run db:push          # Push schema to database
+npm run db:studio        # Open Drizzle Studio
+
+# Test API Server
+curl http://localhost:3001/health
+```
+
+### Environment Variables for Client-Server Mode
+
+```env
+# Client
+NEXT_PUBLIC_SERVER_URI=http://localhost:3001  # API server URL (or remote)
+
+# Server
+PORT=3001                                      # API server port
+PGLITE_DB_LOCATION=./data/budget-local        # Local database path
+```
 
 ## iOS App
 
@@ -333,21 +383,35 @@ A native iOS app built with SwiftUI is available in the `ios/BudgetApp/` directo
 
 ```
 budget-app/
-├── app/
-│   ├── api/
-│   │   ├── auth/
-│   │   │   └── claim-data/       # Claim unclaimed data for user
-│   │   ├── budgets/              # Budget CRUD operations
-│   │   ├── budget-categories/    # Custom category CRUD
-│   │   ├── onboarding/           # Onboarding status CRUD
-│   │   ├── budget-items/         # Budget item management
-│   │   │   └── reorder/          # Drag-and-drop reorder endpoint
-│   │   ├── recurring-payments/   # Recurring payment CRUD
-│   │   ├── transactions/         # Transaction CRUD
-│   │   │   └── split/            # Split transaction operations
-│   │   └── teller/               # Bank integration
-│   │       ├── accounts/         # Account management
-│   │       └── sync/             # Transaction sync
+├── packages/                     # Monorepo packages
+│   ├── shared/                   # Shared types, schema, and db utilities
+│   │   └── src/
+│   │       ├── types/            # TypeScript interfaces
+│   │       ├── db/               # PGlite and cloud connections
+│   │       ├── schema.ts         # Drizzle schema
+│   │       └── index.ts
+│   └── server/                   # Standalone Hono API server
+│       └── src/
+│           ├── index.ts          # Entry point, route mounting, CORS
+│           ├── types.ts          # AppEnv type
+│           ├── middleware/
+│           │   └── auth.ts       # Dual-mode auth (local/remote)
+│           ├── lib/
+│           │   ├── helpers.ts    # Shared helpers (getMonthlyContribution, CATEGORY_TYPES)
+│           │   ├── teller.ts     # Teller API mTLS client
+│           │   └── csvParser.ts  # CSV parsing utilities
+│           └── routes/           # All API route handlers
+│               ├── budgets.ts          # GET/PUT + /copy + /reset
+│               ├── budget-categories.ts # POST/DELETE
+│               ├── budget-items.ts     # CRUD + /reorder
+│               ├── transactions.ts     # CRUD + /split + /batch-assign
+│               ├── recurring-payments.ts # CRUD + /contribute + /reset
+│               ├── teller.ts           # /accounts + /sync
+│               ├── csv.ts             # /accounts + /preview + /import
+│               ├── onboarding.ts      # GET/POST/PUT/PATCH
+│               ├── auth.ts            # claim-data GET/POST
+│               └── database.ts        # GET/POST (no auth)
+├── app/                          # Next.js client app (UI only, no API routes)
 │   ├── insights/
 │   │   └── page.tsx              # Insights page
 │   ├── onboarding/
@@ -377,27 +441,21 @@ budget-app/
 │   ├── SplitTransactionModal.tsx # Split transaction interface
 │   ├── TransactionModal.tsx      # Transaction details modal
 │   └── onboarding/              # Onboarding step components
-│       ├── WelcomeStep.tsx       # Step 1: Welcome
-│       ├── ConceptsStep.tsx      # Step 2: ZBB concepts
-│       ├── BufferStep.tsx        # Step 3: Set buffer
-│       ├── ItemsStep.tsx         # Step 4: Create items
-│       ├── TransactionStep.tsx   # Step 5: First transaction
-│       └── CompleteStep.tsx      # Step 6: Summary
-├── db/
-│   ├── index.ts                  # Database connection
-│   └── schema.ts                 # Drizzle schema definitions
+├── db/                           # Database connections (uses packages/shared)
+│   ├── index.ts                  # Re-exports getDb()
+│   ├── local.ts                  # PGlite local database
+│   ├── cloud.ts                  # Supabase cloud connection
+│   └── schema.ts                 # Drizzle schema
 ├── lib/
-│   ├── auth.ts                   # Authentication helpers
+│   ├── api-client.ts             # Centralized typed API client
+│   ├── auth.ts                   # Authentication helpers (legacy)
 │   ├── budgetHelpers.ts          # Data transformation utilities
 │   ├── chartColors.ts            # Category color mapping for charts
 │   ├── chartHelpers.ts           # Chart data transformation utilities
 │   ├── formatCurrency.ts         # Currency formatting utility
-│   └── teller.ts                 # Teller API client
-├── scripts/
-│   ├── check-schema.ts           # Verify database schema
-│   ├── migrate-add-userid.ts     # Migration for userId columns
-│   └── migrate-add-onboarding.ts # Migration for onboarding table
-├── middleware.ts                 # Clerk route protection
+│   └── teller.ts                 # Teller API client (legacy, copied to server)
+├── middleware.ts                 # Route protection
+├── pnpm-workspace.yaml           # Monorepo workspace config
 └── types/
     └── budget.ts                 # TypeScript type definitions
 ```

@@ -6,8 +6,8 @@ This document contains context for Claude AI to continue development on this bud
 
 A zero-based budget tracking application built with Next.js, TypeScript, and Tailwind CSS. The app features bank account integration via Teller API for automatic transaction imports.
 
-**Current Version:** v1.9.0
-**Last Session:** 2026-02-06
+**Current Version:** v2.0.0-alpha (Client-Server Separation — Phase 3 complete)
+**Last Session:** 2026-02-07
 
 ## Instructions for Claude
 
@@ -17,13 +17,14 @@ A zero-based budget tracking application built with Next.js, TypeScript, and Tai
 
 ## Tech Stack
 
-- **Framework:** Next.js 16.x (App Router)
+- **Architecture:** Monorepo (pnpm workspaces) — client-server separation (API fully migrated to Hono)
+- **Framework:** Next.js 16.x (App Router) for client, Hono for API server
 - **Language:** TypeScript
 - **Styling:** Tailwind CSS
 - **ORM:** Drizzle ORM
-- **Database:** Supabase (PostgreSQL) — migrated from SQLite in v1.4.0
-- **Authentication:** Clerk (@clerk/nextjs)
-- **Bank Integration:** Teller API
+- **Database:** PGlite (local PostgreSQL) + Supabase (cloud sync)
+- **Authentication:** Clerk (@clerk/nextjs) — used for cloud sync, implicit local user otherwise
+- **Bank Integration:** Teller API (mTLS)
 - **Mobile:** Capacitor (live server mode) + Native iOS (SwiftUI)
 - **Charts:** D3.js + d3-sankey
 - **Icons:** react-icons (FaXxx from react-icons/fa only)
@@ -268,19 +269,31 @@ NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
 - `onboarding/TransactionStep.tsx` - Step 5: First transaction with suggested transactions
 - `onboarding/CompleteStep.tsx` - Step 6: Celebration and summary
 
-### API Routes (app/api/)
-- `budgets/route.ts` - GET creates/returns budget, syncs recurring payments to budget items
-- `onboarding/route.ts` - Onboarding status CRUD (GET/POST/PUT/PATCH)
-- `recurring-payments/route.ts` - Full CRUD, DELETE unlinks budget items first
-- `transactions/route.ts` - CRUD with soft delete support
-- `transactions/split/route.ts` - Split transaction creation
-- `teller/` - Bank integration endpoints
-- `auth/claim-data/route.ts` - Claim unclaimed data for migrating users
+### API Server Routes (packages/server/src/routes/)
+All API routes have been migrated from Next.js `app/api/` to the standalone Hono server:
+- `budgets.ts` - GET (auto-create + recurring sync), PUT (buffer), POST `/copy`, POST `/reset`
+- `budget-categories.ts` - POST (create), DELETE (cascade)
+- `budget-items.ts` - POST/PUT/DELETE, PUT `/reorder`
+- `transactions.ts` - CRUD + PATCH (restore) + POST `/split` + GET/DELETE `/split` + POST `/batch-assign`
+- `recurring-payments.ts` - CRUD + POST `/contribute` + POST `/reset`
+- `teller.ts` - GET/POST/DELETE `/accounts`, GET/POST `/sync`
+- `csv.ts` - GET/POST/PUT/DELETE `/accounts`, POST `/preview`, POST/PUT `/import`
+- `onboarding.ts` - GET/POST/PUT/PATCH
+- `auth.ts` - GET/POST (claim-data)
+- `database.ts` - GET/POST (no auth)
+
+### API Server Infrastructure (packages/server/src/)
+- `index.ts` - Hono server entry point, route mounting, auth middleware ordering
+- `types.ts` - `AppEnv` type with `Variables: { userId: string }`
+- `middleware/auth.ts` - Dual-mode auth (local: implicit user, remote: JWT)
+- `lib/helpers.ts` - Shared `getMonthlyContribution()` + `CATEGORY_TYPES`
+- `lib/teller.ts` - Teller API client with mTLS
+- `lib/csvParser.ts` - CSV parsing and column mapping utilities
 
 ### Utilities (lib/)
+- `api-client.ts` - Centralized typed API client (`api.budget.*`, `api.transaction.*`, etc.)
 - `budgetHelpers.ts` - `transformDbBudgetToAppBudget()` transforms DB data to app types
-- `teller.ts` - Teller API client
-- `auth.ts` - Authentication helpers (`requireAuth()`, `isAuthError()`)
+- `auth.ts` - Authentication helpers (`requireAuth()`, `isAuthError()`) — legacy, used by middleware.ts only
 
 ### Root Files
 - `middleware.ts` - Clerk middleware for route protection
@@ -290,28 +303,48 @@ NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
 
 ## Important Code Patterns
 
-### API Route Authentication
-All API routes follow this pattern:
+### API Route Authentication (Hono Server)
+All Hono API routes use middleware-injected auth:
 ```typescript
-import { requireAuth, isAuthError } from '@/lib/auth';
+import { getUserId } from '../middleware/auth';
+import type { AppEnv } from '../types';
 
-export async function GET(request: NextRequest) {
-  const authResult = await requireAuth();
-  if (isAuthError(authResult)) return authResult.error;
-  const { userId } = authResult;
+const route = new Hono<AppEnv>();
 
-  // Use userId in queries
+route.get('/', async (c) => {
+  const userId = getUserId(c);
+  const db = await getDb();
+
   const data = await db.query.budgets.findFirst({
     where: and(eq(budgets.userId, userId), eq(budgets.month, month)),
   });
-}
+  return c.json(data);
+});
 ```
+- Auth middleware (`requireAuth()`) is applied globally to `/api/*` in `index.ts`
+- Database route is mounted BEFORE auth middleware (no auth required)
+- Local mode: implicit 'local' user ID; Remote mode: JWT Bearer token
 
-### Fetching Budget
+### Client-Side API Calls
+All client files use the centralized API client (`lib/api-client.ts`) — no raw `fetch()` calls:
 ```typescript
-const response = await fetch(`/api/budgets?month=${m}&year=${y}`);
-const data = await response.json();
-const transformedBudget = transformDbBudgetToAppBudget(data);
+import { api } from '@/lib/api-client';
+
+// Budget
+const data = await api.budget.get(month, year);
+
+// Transactions
+await api.transaction.create({ budgetItemId, date, description, amount, type });
+await api.transaction.batchAssign([{ transactionId, budgetItemId }]);
+
+// Splits
+const splits = await api.split.list(transactionId);
+await api.split.save(transactionId, splits);
+
+// CSV (file uploads use FormData)
+const formData = new FormData();
+formData.append('file', file);
+const preview = await api.csv.uploadPreview(formData);
 ```
 
 ### Linking Budget Item to Recurring Payment
@@ -328,7 +361,7 @@ await db.delete(recurringPayments).where(eq(recurringPayments.id, paymentId));
 ```
 
 ### Auto-sync Recurring to Budget Items
-In `api/budgets/route.ts` GET handler:
+In `packages/server/src/routes/budgets.ts` GET handler:
 - Fetches all active recurring payments
 - For each with a categoryType, checks if budget item exists in matching category
 - Creates budget item if missing, with `recurringPaymentId` set
@@ -386,13 +419,25 @@ const emojiMap: Record<string, string> = {
 ## Development Commands
 
 ```bash
-npm run dev          # Start development server
+# Client + Server (both needed for full app)
+pnpm dev             # Start Next.js client on :3000
+pnpm server:dev      # Start Hono API server (port from API_PORT env, default 3001)
+
+# Database
 npm run db:push      # Push schema changes to Supabase PostgreSQL
 npm run db:studio    # Open Drizzle Studio to view/edit data
-npm run build        # Production build
+
+# Build
+npm run build        # Production build (Next.js client)
+pnpm server:build    # Build API server
+
+# Mobile
 npm run cap:sync     # Sync Capacitor
 npm run cap:ios      # Build + open Xcode
 npm run cap:android  # Build + open Android Studio
+
+# Health check
+curl http://localhost:3001/health
 ```
 
 ## Testing Notes
@@ -785,13 +830,151 @@ DATABASE_URL=postgresql://postgres.xxx:password@aws-0-us-east-1.pooler.supabase.
 
 ## Session Handoff Notes
 
-Last session ended after:
-1. Fixed recurring income display bug (bi-weekly income was showing wrong month's data and wrong target amount)
-2. Added PGlite HMR stability fix using global state to prevent database corruption in dev mode
-3. Database restore from backup worked successfully
+Last session (2026-02-07) completed **Phases 1, 2, and 3** of client-server separation:
 
-The local-first architecture with PGlite is functional but may still have edge cases with database corruption.
-Next steps would be completing sync engine (Phase 4) or continuing iOS app development.
+### Completed
+1. **Phase 1: Monorepo structure** with pnpm workspaces
+2. **Phase 1: Shared package** (`packages/shared/`) with types, schema, and db utilities
+3. **Phase 2: Hono API server** (`packages/server/`) with health endpoint and auth middleware
+4. **Phase 2: Centralized API client** (`lib/api-client.ts`) with typed methods for all endpoints
+5. **Phase 2: All client files migrated** — zero raw `fetch('/api/...')` calls remain in components/pages
+6. **Phase 3: All 20 Next.js API routes migrated** to 10 Hono route files (45+ HTTP handlers)
+7. **Phase 3: Next.js `app/api/` directory deleted** — clean break, all API served by Hono
+
+### Phase 3 Details (Completed 2026-02-07)
+- **10 Hono route files** created in `packages/server/src/routes/`
+- **3 server lib files** created: `helpers.ts`, `teller.ts`, `csvParser.ts`
+- **Infrastructure:** `types.ts` (AppEnv), auth middleware updated with typed context
+- **Bug fix:** Copy route now uses `fromMonth/fromYear/toMonth/toYear` (was `sourceMonth/sourceYear/targetMonth/targetYear`) to match api-client
+- **Shared helpers:** `getMonthlyContribution()` and `CATEGORY_TYPES` extracted from 3 duplicate definitions into `lib/helpers.ts`
+- **Auth middleware ordering:** Database route mounted before `requireAuth()` (no auth); all other `/api/*` routes require auth
+- **Port config:** Server uses `API_PORT` env var (default 3001), loaded from `.env.local` via `--env-file` flag
+
+### Next Steps
+- Phase 4: Create embedded server manager for local mode
+- Phase 5: Implement Clerk JWT verification for remote mode
+- Phase 6: Update build scripts and installer
+
+### Test Commands
+```bash
+pnpm server:dev    # Start Hono server (port from API_PORT in .env.local)
+pnpm dev           # Start Next.js client on :3000
+curl http://localhost:3401/health   # Verify server is running
+```
+
+---
+
+## Client-Server Separation (v2.0.0)
+
+### Goal
+Split the app into 3 decoupled parts:
+1. **Client** - Next.js frontend with configurable SERVER_URI
+2. **API Server** - Standalone Hono server that can run embedded (local) or remote
+3. **Database** - PGlite (local) or Supabase (cloud)
+
+### Architecture
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    SERVER_URI Config                         │
+│  localhost/127.0.0.1 → Embedded    Other → Remote HTTP      │
+└─────────────────────────────────────────────────────────────┘
+         │                                    │
+         ▼                                    ▼
+┌─────────────────┐                  ┌─────────────────┐
+│ Client spawns   │                  │ Client calls    │
+│ local API server│                  │ remote server   │
+│ as child process│                  │ directly        │
+└────────┬────────┘                  └────────┬────────┘
+         │                                    │
+         ▼                                    ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      API Server (Hono)                       │
+│  - 10 route files, 45+ HTTP handlers                        │
+│  - Auth middleware (local: implicit, remote: JWT)           │
+│  - Teller mTLS client                                       │
+└─────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                        Database                              │
+│  PGlite (local file) ←──or──→ Supabase (cloud PostgreSQL)   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Directory Structure
+```
+budget-app/
+├── packages/
+│   ├── shared/                    # Shared code (types, schema, db)
+│   │   ├── src/
+│   │   │   ├── types/             # TypeScript interfaces
+│   │   │   ├── db/                # PGlite and cloud connections
+│   │   │   ├── schema.ts          # Drizzle schema
+│   │   │   └── index.ts
+│   │   └── package.json
+│   │
+│   └── server/                    # Standalone Hono API server
+│       ├── src/
+│       │   ├── index.ts           # Entry point, route mounting, CORS
+│       │   ├── types.ts           # AppEnv type
+│       │   ├── middleware/auth.ts # Dual-mode auth (local/remote)
+│       │   ├── lib/
+│       │   │   ├── helpers.ts     # Shared helpers (getMonthlyContribution, CATEGORY_TYPES)
+│       │   │   ├── teller.ts      # Teller API mTLS client
+│       │   │   └── csvParser.ts   # CSV parsing utilities
+│       │   └── routes/            # 10 route files (all API handlers)
+│       │       ├── budgets.ts     # GET/PUT + /copy + /reset
+│       │       ├── budget-categories.ts
+│       │       ├── budget-items.ts  # CRUD + /reorder
+│       │       ├── transactions.ts  # CRUD + /split + /batch-assign
+│       │       ├── recurring-payments.ts  # CRUD + /contribute + /reset
+│       │       ├── teller.ts      # /accounts + /sync
+│       │       ├── csv.ts         # /accounts + /preview + /import
+│       │       ├── onboarding.ts
+│       │       ├── auth.ts        # claim-data
+│       │       └── database.ts    # No auth
+│       └── package.json
+│
+├── lib/
+│   └── api-client.ts              # Centralized typed API client
+│
+├── pnpm-workspace.yaml            # Workspace config
+└── ... (Next.js client app — no more app/api/)
+```
+
+### Key Files
+- `packages/shared/src/types/` — Budget, Transaction, RecurringPayment, etc.
+- `packages/shared/src/db/` — getDb(), getLocalDb(), getCloudDb()
+- `packages/shared/src/schema.ts` — Drizzle schema
+- `packages/server/src/index.ts` — Hono server entry point
+- `packages/server/src/middleware/auth.ts` — Dual-mode auth (local/remote)
+- `lib/api-client.ts` — Typed API client with all endpoint methods
+
+### Environment Variables
+```env
+# Client
+NEXT_PUBLIC_SERVER_URI=http://localhost:3401  # API server URL (or remote)
+SERVER_PORT=3400                              # Next.js client port
+
+# Server
+API_PORT=3401                                 # Hono API server port (default 3001)
+PGLITE_DB_LOCATION=./data/budget-local       # Local database path
+DATABASE_URL=postgresql://...                 # For cloud sync
+TELLER_CERTIFICATE_PATH=./certificates/certificate.pem
+TELLER_PRIVATE_KEY_PATH=./certificates/private_key.pem
+CLERK_SECRET_KEY=sk_test_...                  # Remote mode only
+```
+
+### Confirmed Decisions
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| API Framework | **Hono** | Web-standard Request/Response, tiny bundle, TypeScript-first |
+| Codebase Structure | **Monorepo** | packages/client, packages/server, packages/shared |
+| Migration Strategy | **Clean break** | Remove Next.js API routes after migrating to Hono |
+| Package Manager | **pnpm** | Efficient, good monorepo support |
+| Auth Token | **Clerk JWT** | Already integrated, proven |
+
+---
 
 ## Branch Goal: Local-First Architecture (v1.5.0)
 
