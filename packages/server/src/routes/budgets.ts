@@ -1,10 +1,11 @@
 import { Hono } from 'hono';
 import { getDb } from '@budget-app/shared/db';
-import { budgets, budgetCategories, budgetItems, recurringPayments } from '@budget-app/shared/schema';
+import { budgets, budgetCategories, budgetItems, transactions, userOnboarding, recurringPayments } from '@budget-app/shared/schema';
 import { eq, and, asc, inArray } from 'drizzle-orm';
 import { getUserId } from '../middleware/auth';
 import { getMonthlyContribution, CATEGORY_TYPES } from '../lib/helpers';
 import type { AppEnv } from '../types';
+import { DEMO_DATA, DEMO_BUFFER } from '../lib/demoData';
 
 // Helper to fetch a full budget with nested relations
 async function fetchBudgetFull(budgetId: string) {
@@ -548,6 +549,92 @@ route.post('/reset', async (c) => {
   }
 
   return c.json({ error: 'Invalid mode' }, 400);
+});
+
+// POST /demo - Load demo data for the current month
+route.post('/demo', async (c) => {
+  const userId = getUserId(c);
+  const db = await getDb();
+  const now = new Date();
+  const month = now.getMonth(); // 0-indexed
+  const year = now.getFullYear();
+
+  // Check if budget with items already exists
+  const existing = await db.query.budgets.findFirst({
+    where: and(eq(budgets.userId, userId), eq(budgets.month, month), eq(budgets.year, year)),
+    with: { categories: { with: { items: true } } },
+  });
+
+  if (existing) {
+    const hasItems = existing.categories.some(c => c.items.length > 0);
+    if (hasItems) {
+      return c.json({ error: 'Budget already has data for this month' }, 409);
+    }
+    // Empty shell exists — delete it for a clean slate
+    const catIds = existing.categories.map(c => c.id);
+    if (catIds.length > 0) {
+      await db.delete(budgetCategories).where(inArray(budgetCategories.id, catIds));
+    }
+    await db.delete(budgets).where(eq(budgets.id, existing.id));
+  }
+
+  // Create budget with demo buffer
+  const [budget] = await db.insert(budgets).values({
+    userId,
+    month,
+    year,
+    buffer: String(DEMO_BUFFER),
+  }).returning();
+
+  // Create categories and items with transactions
+  for (const cat of CATEGORY_TYPES) {
+    const [category] = await db.insert(budgetCategories).values({
+      budgetId: budget.id,
+      categoryType: cat.type,
+      name: cat.name,
+    }).returning();
+
+    const items = DEMO_DATA[cat.type] || [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const [budgetItem] = await db.insert(budgetItems).values({
+        categoryId: category.id,
+        name: item.name,
+        planned: String(item.planned),
+        order: i,
+      }).returning();
+
+      for (const txn of item.transactions) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(txn.day).padStart(2, '0')}`;
+        await db.insert(transactions).values({
+          budgetItemId: budgetItem.id,
+          date: dateStr,
+          description: txn.description,
+          amount: String(txn.amount),
+          type: txn.type,
+          merchant: txn.merchant || null,
+        });
+      }
+    }
+  }
+
+  // Mark onboarding complete
+  const existingOnboarding = await db.select().from(userOnboarding).where(eq(userOnboarding.userId, userId));
+  if (existingOnboarding.length === 0) {
+    await db.insert(userOnboarding).values({
+      userId,
+      currentStep: 6,
+      completedAt: new Date(),
+    });
+  } else {
+    await db.update(userOnboarding)
+      .set({ currentStep: 6, completedAt: new Date() })
+      .where(eq(userOnboarding.userId, userId));
+  }
+
+  // Return full budget
+  const fullBudget = await fetchBudgetFull(budget.id);
+  return c.json(fullBudget);
 });
 
 export default route;

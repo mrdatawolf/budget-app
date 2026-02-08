@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import WelcomeStep from '@/components/onboarding/WelcomeStep';
-import { api } from '@/lib/api-client';
+import { api, ApiError } from '@/lib/api-client';
 import ConceptsStep from '@/components/onboarding/ConceptsStep';
 import BufferStep from '@/components/onboarding/BufferStep';
 import ItemsStep from '@/components/onboarding/ItemsStep';
@@ -44,6 +44,7 @@ export default function OnboardingPage() {
   const [createdItems, setCreatedItems] = useState<CreatedItem[]>([]);
   const [bufferAmount, setBufferAmount] = useState(0);
   const [addedTransaction, setAddedTransaction] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
 
   const initializeBudget = useCallback(async () => {
     const now = new Date();
@@ -112,6 +113,21 @@ export default function OnboardingPage() {
     window.location.href = '/';
   };
 
+  const handleLoadDemo = async () => {
+    setDemoLoading(true);
+    try {
+      await api.budget.loadDemo();
+      window.location.href = '/';
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        alert('You already have budget data for this month. Please use the regular setup or go to the dashboard.');
+      } else {
+        alert('Failed to load demo data. Please try again.');
+      }
+      setDemoLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-surface-secondary flex items-center justify-center">
@@ -159,7 +175,11 @@ export default function OnboardingPage() {
       <div className="flex-1 overflow-y-auto px-6 py-8">
         <div className="w-full max-w-2xl mx-auto">
           {currentStep === 1 && (
-            <WelcomeStep onNext={() => setCurrentStep(2)} />
+            <WelcomeStep
+              onNext={() => setCurrentStep(2)}
+              onLoadDemo={handleLoadDemo}
+              demoLoading={demoLoading}
+            />
           )}
           {currentStep === 2 && (
             <ConceptsStep
