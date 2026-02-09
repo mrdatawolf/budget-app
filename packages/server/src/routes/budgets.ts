@@ -174,16 +174,8 @@ route.get('/', async (c) => {
       const existingItem = category.items.find(item => item.recurringPaymentId === recurring.id);
 
       if (existingItem) {
-        // Update existing item if planned amount doesn't match
-        const existingPlanned = parseFloat(String(existingItem.planned));
-        const expectedPlanned = parseFloat(monthlyContribution);
-
-        if (Math.abs(existingPlanned - expectedPlanned) > 0.01) {
-          await db.update(budgetItems)
-            .set({ planned: monthlyContribution })
-            .where(eq(budgetItems.id, existingItem.id));
-          itemsCreated = true;
-        }
+        // Item already exists for this recurring payment — don't overwrite
+        // the planned amount since the user may have customized it
         continue;
       }
 
