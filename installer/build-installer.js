@@ -24,8 +24,8 @@ const path = require('path');
 const https = require('https');
 const { execSync } = require('child_process');
 
-// Configuration
-const APP_VERSION = '2.0.0';
+// Configuration — version read from package.json
+const APP_VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).version;
 const NODE_VERSION = '20.11.1'; // LTS version
 const NODE_DOWNLOAD_URL = `https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-win-x64.zip`;
 const PROJECT_ROOT = path.resolve(__dirname, '..');
@@ -33,6 +33,7 @@ const DIST_DIR = path.join(PROJECT_ROOT, 'dist');
 const STANDALONE_DIR = path.join(DIST_DIR, 'standalone');
 const NODE_CACHE_DIR = path.join(DIST_DIR, 'node-cache');
 const NODE_DIR = path.join(DIST_DIR, 'node');
+const DISTRIBUTE_DIR = path.join(PROJECT_ROOT, 'distribute');
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -408,6 +409,38 @@ function mergePackageDir(src, dest) {
 }
 
 /**
+ * Detect the Next.js standalone project directory.
+ *
+ * Next.js 16+ nests standalone output under a project-name subdirectory
+ * (e.g., .next/standalone/budget-app/server.js). Earlier versions put
+ * server.js directly in .next/standalone/. This function detects which
+ * layout we have and returns the correct source directory.
+ */
+function findStandaloneRoot(standaloneDir) {
+  // Check if server.js is directly in the standalone dir (Next.js <16)
+  if (fs.existsSync(path.join(standaloneDir, 'server.js'))) {
+    return standaloneDir;
+  }
+
+  // Next.js 16+: look for a project subdirectory containing server.js
+  const entries = fs.readdirSync(standaloneDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      const candidate = path.join(standaloneDir, entry.name, 'server.js');
+      if (fs.existsSync(candidate)) {
+        log(`  Detected nested standalone layout: ${entry.name}/`);
+        return path.join(standaloneDir, entry.name);
+      }
+    }
+  }
+
+  throw new Error(
+    'Could not find server.js in Next.js standalone output. ' +
+    'Check that next.config.ts has output: "standalone"'
+  );
+}
+
+/**
  * Step 4: Prepare standalone directory
  */
 async function prepareStandalone() {
@@ -425,11 +458,15 @@ async function prepareStandalone() {
     );
   }
 
+  // Find the actual project root within standalone output
+  // Next.js 16+ nests under a project-name subdirectory
+  const standaloneRoot = findStandaloneRoot(nextStandalone);
+
   // Copy Next.js standalone output into STANDALONE_DIR (preserves api-server/ from step 2)
   log('  Copying standalone server files...');
-  const standaloneEntries = fs.readdirSync(nextStandalone, { withFileTypes: true });
+  const standaloneEntries = fs.readdirSync(standaloneRoot, { withFileTypes: true });
   for (const entry of standaloneEntries) {
-    const srcPath = path.join(nextStandalone, entry.name);
+    const srcPath = path.join(standaloneRoot, entry.name);
     const destPath = path.join(STANDALONE_DIR, entry.name);
     if (entry.isDirectory()) {
       copyDir(srcPath, destPath);
@@ -507,67 +544,610 @@ async function verifyBuild() {
 }
 
 /**
- * Step 6: Run Inno Setup compiler
+ * Find NSIS makensis.exe compiler
  */
-async function runInnoSetup() {
-  logStep('6/6', 'Creating Windows installer...');
-
-  if (skipInno) {
-    logWarning('Skipping Inno Setup (--skip-inno flag)');
-    log('  To create installer manually, run Inno Setup on: installer/budget-app.iss');
-    return;
-  }
-
-  // Find Inno Setup compiler
-  const innoPaths = [
-    'C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe',
-    'C:\\Program Files\\Inno Setup 6\\ISCC.exe',
-    'C:\\Program Files (x86)\\Inno Setup 5\\ISCC.exe',
+function findMakeNsis() {
+  const locations = [
+    'C:\\Program Files (x86)\\NSIS\\makensis.exe',
+    'C:\\Program Files\\NSIS\\makensis.exe',
   ];
 
-  let innoCompiler = null;
-  for (const p of innoPaths) {
-    if (fs.existsSync(p)) {
-      innoCompiler = p;
-      break;
-    }
+  for (const loc of locations) {
+    if (fs.existsSync(loc)) return loc;
   }
 
-  if (!innoCompiler) {
-    logWarning('Inno Setup not found. Please install from: https://jrsoftware.org/isinfo.php');
-    log('  After installing, run this script again or compile installer/budget-app.iss manually');
+  // Try PATH
+  try {
+    const result = execSync('where makensis', { encoding: 'utf8' }).trim().split('\n')[0];
+    if (result && fs.existsSync(result)) return result;
+  } catch { /* not in PATH */ }
+
+  return null;
+}
+
+/**
+ * Build an NSIS installer from a source directory.
+ *
+ * @param {Object} opts
+ * @param {string} opts.name          - Display name (e.g., "Budget App Server")
+ * @param {string} opts.sourceDir     - Directory containing files to package
+ * @param {string} opts.outputExe     - Output .exe filename (no path)
+ * @param {string} opts.installDir    - Default install directory
+ * @param {string} opts.regKey        - Registry key for storing install path
+ * @param {string} opts.shortcutName  - Start Menu / Desktop shortcut name
+ * @param {string} opts.launchFile    - File to launch from shortcuts (relative to install dir)
+ * @param {string} opts.iconFile      - Icon .ico path (optional)
+ * @param {string[]} opts.dataDirs    - Directories to preserve on uninstall (relative names)
+ */
+function buildNsisInstaller(makensisPath, opts) {
+  const tempDir = path.join(DIST_DIR, 'nsis-temp');
+  cleanDir(tempDir);
+
+  // Copy source files to temp
+  copyDir(opts.sourceDir, path.join(tempDir, 'files'));
+
+  // Icon handling
+  let iconDirective = '';
+  let unIconDirective = '';
+  if (opts.iconFile && fs.existsSync(opts.iconFile)) {
+    const iconDest = path.join(tempDir, 'icon.ico');
+    fs.copyFileSync(opts.iconFile, iconDest);
+    iconDirective = `!define MUI_ICON "${iconDest.replace(/\\/g, '\\\\')}"`;
+    unIconDirective = `!define MUI_UNICON "${iconDest.replace(/\\/g, '\\\\')}"`;
+  }
+
+  // Data directory preservation script
+  const dataDirChecks = (opts.dataDirs || []).map(d =>
+    `  RMDir /r "$INSTDIR\\${d}"`
+  ).join('\n');
+
+  // Generate uninstall sections that skip data dirs
+  const uninstallRemove = (opts.dataDirs && opts.dataDirs.length > 0)
+    ? `  ; Ask user about data preservation
+  MessageBox MB_YESNO "Do you want to keep your budget data?$\\r$\\n$\\r$\\nClick Yes to keep your data (you can use it if you reinstall).$\\r$\\nClick No to delete all data." IDYES SkipDataDelete
+${dataDirChecks}
+  SkipDataDelete:`
+    : '';
+
+  const nsisScript = `
+; NSIS Installer Script for ${opts.name}
+; Generated by build-installer.js
+
+!include "MUI2.nsh"
+
+; General
+Name "${opts.name} ${APP_VERSION}"
+OutFile "${path.join(DISTRIBUTE_DIR, opts.outputExe).replace(/\\/g, '\\\\')}"
+InstallDir "${opts.installDir}"
+InstallDirRegKey HKCU "Software\\${opts.regKey}" "InstallDir"
+RequestExecutionLevel user
+
+; Interface Settings
+!define MUI_ABORTWARNING
+${iconDirective}
+${unIconDirective}
+
+; Pages
+!insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_DIRECTORY
+!insertmacro MUI_PAGE_INSTFILES
+!insertmacro MUI_PAGE_FINISH
+
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_INSTFILES
+
+; Languages
+!insertmacro MUI_LANGUAGE "English"
+
+; Installer Section
+Section "Install"
+  SetOutPath "$INSTDIR"
+
+  ; Copy all files
+  File /r "${path.join(tempDir, 'files', '*.*').replace(/\\/g, '\\\\')}"
+
+  ; Store installation folder
+  WriteRegStr HKCU "Software\\${opts.regKey}" "InstallDir" "$INSTDIR"
+
+  ; Create uninstaller
+  WriteUninstaller "$INSTDIR\\Uninstall.exe"
+
+  ; Create Start Menu shortcuts
+  CreateDirectory "$SMPROGRAMS\\${opts.shortcutName}"
+  CreateShortcut "$SMPROGRAMS\\${opts.shortcutName}\\${opts.shortcutName}.lnk" "$INSTDIR\\${opts.launchFile}" "" "$INSTDIR\\node.exe"
+  CreateShortcut "$SMPROGRAMS\\${opts.shortcutName}\\Uninstall.lnk" "$INSTDIR\\Uninstall.exe"
+
+  ; Create Desktop shortcut
+  CreateShortcut "$DESKTOP\\${opts.shortcutName}.lnk" "$INSTDIR\\${opts.launchFile}" "" "$INSTDIR\\node.exe"
+
+SectionEnd
+
+; Uninstaller Section
+Section "Uninstall"
+${uninstallRemove}
+
+  ; Remove all files
+  RMDir /r "$INSTDIR"
+
+  ; Remove shortcuts
+  Delete "$SMPROGRAMS\\${opts.shortcutName}\\${opts.shortcutName}.lnk"
+  Delete "$SMPROGRAMS\\${opts.shortcutName}\\Uninstall.lnk"
+  RMDir "$SMPROGRAMS\\${opts.shortcutName}"
+  Delete "$DESKTOP\\${opts.shortcutName}.lnk"
+
+  ; Remove registry keys
+  DeleteRegKey HKCU "Software\\${opts.regKey}"
+
+SectionEnd
+`;
+
+  const nsisScriptPath = path.join(tempDir, 'installer.nsi');
+  fs.writeFileSync(nsisScriptPath, nsisScript, 'utf8');
+
+  // Compile
+  execSync(`"${makensisPath}" "${nsisScriptPath}"`, { stdio: 'inherit' });
+
+  // Cleanup temp
+  fs.rmSync(tempDir, { recursive: true, force: true });
+}
+
+/**
+ * Step 6: Create NSIS installers for server and client
+ */
+async function createInstallers() {
+  logStep('7/7', 'Creating Windows installers...');
+
+  if (skipInno) {
+    logWarning('Skipping installer creation (--skip-inno flag)');
     return;
   }
 
-  log(`  Found Inno Setup: ${innoCompiler}`);
-
-  // Copy icon if it exists
-  const iconSrc = path.join(PROJECT_ROOT, 'public', 'icon.ico');
-  const iconDest = path.join(STANDALONE_DIR, 'icon.ico');
-  if (fs.existsSync(iconSrc)) {
-    fs.copyFileSync(iconSrc, iconDest);
-  } else {
-    logWarning('No icon.ico found in public/ — installer will use default icon');
+  const makensisPath = findMakeNsis();
+  if (!makensisPath) {
+    logWarning('NSIS not found. Install from: https://nsis.sourceforge.io/Download');
+    log('  Or run: winget install NSIS.NSIS');
+    log('  Distribution packages are still available in distribute/');
+    return;
   }
 
-  // Run Inno Setup compiler
-  const issPath = path.join(__dirname, 'budget-app.iss');
-  log('  Compiling installer...');
+  log(`  Found NSIS: ${makensisPath}`);
 
-  try {
-    execSync(`"${innoCompiler}" "${issPath}"`, {
-      cwd: __dirname,
-      stdio: 'inherit',
-    });
+  const iconFile = path.join(PROJECT_ROOT, 'public', 'icon.ico');
+  const serverDir = path.join(DISTRIBUTE_DIR, `BudgetApp-Server-${APP_VERSION}`);
+  const clientDir = path.join(DISTRIBUTE_DIR, `BudgetApp-Client-${APP_VERSION}`);
 
-    const installerPath = path.join(DIST_DIR, `BudgetApp-${APP_VERSION}-Setup.exe`);
-    if (fs.existsSync(installerPath)) {
-      logSuccess(`Installer created: ${installerPath}`);
+  // --- Server Installer ---
+  log('  Building server installer...');
+  buildNsisInstaller(makensisPath, {
+    name: 'Budget App Server',
+    sourceDir: serverDir,
+    outputExe: `BudgetApp-Server-${APP_VERSION}-Setup.exe`,
+    installDir: 'C:\\BudgetAppServer',
+    regKey: 'BudgetAppServer',
+    shortcutName: 'Budget App Server',
+    launchFile: 'start-server.bat',
+    iconFile,
+    dataDirs: ['data'],
+  });
+  logSuccess(`Server installer: BudgetApp-Server-${APP_VERSION}-Setup.exe`);
+
+  // --- Client Installer ---
+  log('  Building client installer...');
+  buildNsisInstaller(makensisPath, {
+    name: 'Budget App Client',
+    sourceDir: clientDir,
+    outputExe: `BudgetApp-Client-${APP_VERSION}-Setup.exe`,
+    installDir: 'C:\\BudgetAppClient',
+    regKey: 'BudgetAppClient',
+    shortcutName: 'Budget App',
+    launchFile: 'start-client.bat',
+    iconFile,
+    dataDirs: [],
+  });
+  logSuccess(`Client installer: BudgetApp-Client-${APP_VERSION}-Setup.exe`);
+}
+
+/**
+ * Step 7: Create separate distribution packages
+ *
+ * Produces:
+ *   distribute/
+ *     BudgetApp-Server-2.0.0/    — API server + Node.js + PGlite (self-contained)
+ *     BudgetApp-Client-2.0.0/    — Next.js web app + Node.js (self-contained)
+ */
+async function createDistribution() {
+  logStep('6/7', 'Creating distribution packages...');
+
+  const serverDir = path.join(DISTRIBUTE_DIR, `BudgetApp-Server-${APP_VERSION}`);
+  const clientDir = path.join(DISTRIBUTE_DIR, `BudgetApp-Client-${APP_VERSION}`);
+
+  // Ensure distribute directory exists (never clean it — preserves previous installers)
+  fs.mkdirSync(DISTRIBUTE_DIR, { recursive: true });
+
+  // Only clean the specific package subdirectories that will be rebuilt
+  if (fs.existsSync(serverDir)) {
+    fs.rmSync(serverDir, { recursive: true, force: true });
+  }
+  if (fs.existsSync(clientDir)) {
+    fs.rmSync(clientDir, { recursive: true, force: true });
+  }
+
+  // --- SERVER PACKAGE ---
+  log('  Packaging server...');
+  fs.mkdirSync(serverDir, { recursive: true });
+
+  // Copy Node.js runtime
+  const nodeExeSrc = path.join(NODE_DIR, 'node.exe');
+  if (fs.existsSync(nodeExeSrc)) {
+    fs.copyFileSync(nodeExeSrc, path.join(serverDir, 'node.exe'));
+  }
+
+  // Copy API server bundle
+  copyDir(
+    path.join(STANDALONE_DIR, 'api-server'),
+    path.join(serverDir, 'api-server')
+  );
+
+  // Copy .env.example
+  const envExample = path.join(PROJECT_ROOT, '.env.example');
+  if (fs.existsSync(envExample)) {
+    fs.copyFileSync(envExample, path.join(serverDir, '.env.example'));
+  }
+
+  // Create server startup script (Node.js)
+  fs.writeFileSync(path.join(serverDir, 'start-server.js'), `#!/usr/bin/env node
+/**
+ * Budget App API Server — Standalone Startup
+ * Starts the Hono API server with PGlite local database.
+ */
+const { spawn, execSync } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+const http = require('http');
+
+const APP_DIR = __dirname;
+const DEFAULT_API_PORT = 3401;
+
+function readEnvVar(name, defaultValue) {
+  const envPath = path.join(APP_DIR, '.env');
+  if (fs.existsSync(envPath)) {
+    const content = fs.readFileSync(envPath, 'utf8');
+    const match = content.match(new RegExp(\`^\${name}=(.+)\`, 'm'));
+    if (match) return match[1].trim();
+  }
+  if (process.env[name]) return process.env[name];
+  return defaultValue;
+}
+
+function writePidFile() {
+  const dataDir = path.join(APP_DIR, 'data');
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  fs.writeFileSync(path.join(dataDir, '.pid'), process.pid.toString(), 'utf8');
+}
+
+function removePidFile() {
+  try { fs.unlinkSync(path.join(APP_DIR, 'data', '.pid')); } catch {}
+}
+
+async function main() {
+  const apiPort = parseInt(readEnvVar('API_PORT', String(DEFAULT_API_PORT)), 10);
+
+  console.log('');
+  console.log('========================================');
+  console.log('     Budget App API Server');
+  console.log('========================================');
+  console.log('');
+  console.log('  API server:  http://localhost:' + apiPort);
+  console.log('  Health:      http://localhost:' + apiPort + '/health');
+  console.log('  Data:        ' + path.join(APP_DIR, 'data', 'budget-local'));
+  console.log('');
+  console.log('  Press Ctrl+C to stop');
+  console.log('');
+
+  const dataDir = path.join(APP_DIR, 'data');
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+
+  writePidFile();
+
+  const serverEntry = path.join(APP_DIR, 'api-server', 'index.mjs');
+  if (!fs.existsSync(serverEntry)) {
+    console.error('API server not found at ' + serverEntry);
+    process.exit(1);
+  }
+
+  const child = spawn(process.execPath, [serverEntry], {
+    cwd: path.join(APP_DIR, 'api-server'),
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      NODE_ENV: 'production',
+      API_PORT: apiPort.toString(),
+      PGLITE_DB_LOCATION: path.join(APP_DIR, 'data', 'budget-local'),
+    },
+  });
+
+  child.on('close', (code) => {
+    removePidFile();
+    process.exit(code || 0);
+  });
+
+  process.on('SIGINT', () => {
+    try { spawn('taskkill', ['/pid', child.pid.toString(), '/f', '/t'], { stdio: 'ignore' }); } catch {}
+    removePidFile();
+    setTimeout(() => process.exit(0), 1000);
+  });
+  process.on('SIGTERM', () => {
+    try { spawn('taskkill', ['/pid', child.pid.toString(), '/f', '/t'], { stdio: 'ignore' }); } catch {}
+    removePidFile();
+    setTimeout(() => process.exit(0), 1000);
+  });
+}
+
+main();
+`, 'utf8');
+
+  // Create server batch file
+  fs.writeFileSync(path.join(serverDir, 'start-server.bat'), `@echo off
+setlocal enabledelayedexpansion
+title Budget App API Server
+
+set "SCRIPT_DIR=%~dp0"
+cd /d "%SCRIPT_DIR%"
+
+if not exist "data" mkdir data
+
+if exist "node.exe" (
+    set "NODE_CMD=%SCRIPT_DIR%node.exe"
+) else (
+    where node >nul 2>nul
+    if errorlevel 1 (
+        echo ERROR: Node.js not found!
+        pause
+        exit /b 1
+    )
+    set "NODE_CMD=node"
+)
+
+"%NODE_CMD%" start-server.js
+
+echo.
+echo Server stopped.
+pause
+`, 'utf8');
+
+  // Create stop batch file for server
+  fs.writeFileSync(path.join(serverDir, 'stop-server.bat'), `@echo off
+setlocal
+set "SCRIPT_DIR=%~dp0"
+cd /d "%SCRIPT_DIR%"
+
+if exist "data\\.pid" (
+    set /p PID=<"data\\.pid"
+    echo Stopping Budget App API Server (PID: %PID%)...
+    taskkill /pid %PID% /f /t >nul 2>nul
+    del "data\\.pid" >nul 2>nul
+    echo Stopped.
+) else (
+    echo No running server found.
+)
+pause
+`, 'utf8');
+
+  logSuccess(`Server package: ${serverDir}`);
+
+  // --- CLIENT PACKAGE ---
+  log('  Packaging client...');
+  fs.mkdirSync(clientDir, { recursive: true });
+
+  // Copy Node.js runtime
+  if (fs.existsSync(nodeExeSrc)) {
+    fs.copyFileSync(nodeExeSrc, path.join(clientDir, 'node.exe'));
+  }
+
+  // Copy Next.js standalone files (server.js, .next/, node_modules/, package.json)
+  const nextFiles = ['server.js', 'package.json'];
+  for (const f of nextFiles) {
+    const src = path.join(STANDALONE_DIR, f);
+    if (fs.existsSync(src)) {
+      fs.copyFileSync(src, path.join(clientDir, f));
     }
-  } catch (error) {
-    logError('Inno Setup compilation failed');
-    throw error;
   }
+
+  const nextDirs = ['.next', 'node_modules', 'public'];
+  for (const d of nextDirs) {
+    const src = path.join(STANDALONE_DIR, d);
+    if (fs.existsSync(src)) {
+      copyDir(src, path.join(clientDir, d));
+    }
+  }
+
+  // Remove .pnpm directory from client package.
+  // fixPnpmLayout() already merged needed files to top-level node_modules,
+  // and the deeply nested .pnpm paths exceed Windows MAX_PATH / NSIS limits.
+  const clientPnpmDir = path.join(clientDir, 'node_modules', '.pnpm');
+  if (fs.existsSync(clientPnpmDir)) {
+    log('  Removing .pnpm (already merged to top-level)...');
+    fs.rmSync(clientPnpmDir, { recursive: true, force: true });
+  }
+
+  // Create client startup script (Node.js)
+  fs.writeFileSync(path.join(clientDir, 'start-client.js'), `#!/usr/bin/env node
+/**
+ * Budget App Web Client — Standalone Startup
+ * Starts the Next.js web server.
+ */
+const { spawn, execSync } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+
+const APP_DIR = __dirname;
+const DEFAULT_WEB_PORT = 3400;
+const DEFAULT_API_PORT = 3401;
+
+function readEnvVar(name, defaultValue) {
+  const envPath = path.join(APP_DIR, '.env');
+  if (fs.existsSync(envPath)) {
+    const content = fs.readFileSync(envPath, 'utf8');
+    const match = content.match(new RegExp(\`^\${name}=(.+)\`, 'm'));
+    if (match) return match[1].trim();
+  }
+  if (process.env[name]) return process.env[name];
+  return defaultValue;
+}
+
+function writePidFile() {
+  const dataDir = path.join(APP_DIR, 'data');
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  fs.writeFileSync(path.join(dataDir, '.pid'), process.pid.toString(), 'utf8');
+}
+
+function removePidFile() {
+  try { fs.unlinkSync(path.join(APP_DIR, 'data', '.pid')); } catch {}
+}
+
+function openBrowser(url) {
+  try { execSync('start "" "' + url + '"', { stdio: 'ignore', shell: true }); }
+  catch { console.log('Open your browser to: ' + url); }
+}
+
+async function main() {
+  const webPort = parseInt(readEnvVar('SERVER_PORT', String(DEFAULT_WEB_PORT)), 10);
+  const apiPort = parseInt(readEnvVar('API_PORT', String(DEFAULT_API_PORT)), 10);
+
+  console.log('');
+  console.log('========================================');
+  console.log('     Budget App Web Client');
+  console.log('========================================');
+  console.log('');
+  console.log('  Web app:     http://localhost:' + webPort);
+  console.log('  API server:  http://localhost:' + apiPort + ' (must be running separately)');
+  console.log('');
+  console.log('  Press Ctrl+C to stop');
+  console.log('');
+
+  const serverEntry = path.join(APP_DIR, 'server.js');
+  if (!fs.existsSync(serverEntry)) {
+    console.error('Next.js server not found at ' + serverEntry);
+    process.exit(1);
+  }
+
+  writePidFile();
+
+  const child = spawn(process.execPath, [serverEntry], {
+    cwd: APP_DIR,
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      NODE_ENV: 'production',
+      PORT: webPort.toString(),
+      HOSTNAME: '0.0.0.0',
+    },
+  });
+
+  setTimeout(() => openBrowser('http://localhost:' + webPort), 2000);
+
+  child.on('close', (code) => {
+    removePidFile();
+    process.exit(code || 0);
+  });
+
+  process.on('SIGINT', () => {
+    try { spawn('taskkill', ['/pid', child.pid.toString(), '/f', '/t'], { stdio: 'ignore' }); } catch {}
+    removePidFile();
+    setTimeout(() => process.exit(0), 1000);
+  });
+  process.on('SIGTERM', () => {
+    try { spawn('taskkill', ['/pid', child.pid.toString(), '/f', '/t'], { stdio: 'ignore' }); } catch {}
+    removePidFile();
+    setTimeout(() => process.exit(0), 1000);
+  });
+}
+
+main();
+`, 'utf8');
+
+  // Create client batch file
+  fs.writeFileSync(path.join(clientDir, 'start-client.bat'), `@echo off
+setlocal enabledelayedexpansion
+title Budget App Web Client
+
+set "SCRIPT_DIR=%~dp0"
+cd /d "%SCRIPT_DIR%"
+
+if exist "node.exe" (
+    set "NODE_CMD=%SCRIPT_DIR%node.exe"
+) else (
+    where node >nul 2>nul
+    if errorlevel 1 (
+        echo ERROR: Node.js not found!
+        pause
+        exit /b 1
+    )
+    set "NODE_CMD=node"
+)
+
+"%NODE_CMD%" start-client.js
+
+echo.
+echo Client stopped.
+pause
+`, 'utf8');
+
+  // Create stop batch file for client
+  fs.writeFileSync(path.join(clientDir, 'stop-client.bat'), `@echo off
+setlocal
+set "SCRIPT_DIR=%~dp0"
+cd /d "%SCRIPT_DIR%"
+
+if exist "data\\.pid" (
+    set /p PID=<"data\\.pid"
+    echo Stopping Budget App Web Client (PID: %PID%)...
+    taskkill /pid %PID% /f /t >nul 2>nul
+    del "data\\.pid" >nul 2>nul
+    echo Stopped.
+) else (
+    echo No running client found.
+)
+pause
+`, 'utf8');
+
+  logSuccess(`Client package: ${clientDir}`);
+
+  // --- Summary ---
+  log('');
+  log('Distribution packages:', colors.bright);
+
+  const serverSize = getDirSize(serverDir);
+  const clientSize = getDirSize(clientDir);
+  log(`  Server: ${(serverSize / 1024 / 1024).toFixed(1)} MB — ${serverDir}`);
+  log(`  Client: ${(clientSize / 1024 / 1024).toFixed(1)} MB — ${clientDir}`);
+
+  log('');
+  log('To test:', colors.bright);
+  log('  1. Start server:  cd distribute\\BudgetApp-Server-' + APP_VERSION + ' && start-server.bat');
+  log('  2. Start client:  cd distribute\\BudgetApp-Client-' + APP_VERSION + ' && start-client.bat');
+  log('  3. Open http://localhost:3400');
+}
+
+/**
+ * Calculate total size of a directory recursively.
+ */
+function getDirSize(dirPath) {
+  let total = 0;
+  try {
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name);
+      try {
+        if (entry.isDirectory()) {
+          total += getDirSize(fullPath);
+        } else {
+          total += fs.statSync(fullPath).size;
+        }
+      } catch { /* skip */ }
+    }
+  } catch { /* skip */ }
+  return total;
 }
 
 /**
@@ -591,7 +1171,8 @@ async function main() {
     await downloadNodeJs();
     await prepareStandalone();
     await verifyBuild();
-    await runInnoSetup();
+    await createDistribution();
+    await createInstallers();
 
     const elapsed = Math.round((Date.now() - startTime) / 1000);
 
@@ -602,16 +1183,21 @@ async function main() {
 
     log('Output files:', colors.bright);
     log(`  Standalone:  ${STANDALONE_DIR}`);
-    log(`  Node.js:     ${path.join(NODE_DIR, 'node.exe')}`);
+    log(`  Server pkg:  ${path.join(DISTRIBUTE_DIR, `BudgetApp-Server-${APP_VERSION}`)}`);
+    log(`  Client pkg:  ${path.join(DISTRIBUTE_DIR, `BudgetApp-Client-${APP_VERSION}`)}`);
 
-    const installer = path.join(DIST_DIR, `BudgetApp-${APP_VERSION}-Setup.exe`);
-    if (fs.existsSync(installer)) {
-      log(`  Installer:   ${installer}`, colors.green);
+    const serverInstaller = path.join(DISTRIBUTE_DIR, `BudgetApp-Server-${APP_VERSION}-Setup.exe`);
+    const clientInstaller = path.join(DISTRIBUTE_DIR, `BudgetApp-Client-${APP_VERSION}-Setup.exe`);
+    if (fs.existsSync(serverInstaller)) {
+      log(`  Server .exe: ${serverInstaller}`, colors.green);
+    }
+    if (fs.existsSync(clientInstaller)) {
+      log(`  Client .exe: ${clientInstaller}`, colors.green);
     }
 
     log('\nTo test locally:', colors.bright);
-    log('  1. cd dist/standalone');
-    log('  2. ..\\node\\node.exe start-production.js');
+    log('  1. Start server:  cd distribute\\BudgetApp-Server-' + APP_VERSION + ' && start-server.bat');
+    log('  2. Start client:  cd distribute\\BudgetApp-Client-' + APP_VERSION + ' && start-client.bat');
     log('  3. Open http://localhost:3400\n');
 
   } catch (error) {
