@@ -53,6 +53,7 @@ drizzle/
 
 # installer build output
 /dist/
+/distribute/
 
 # Claude Code
 .claude/
