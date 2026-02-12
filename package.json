@@ -1,6 +1,6 @@
 {
   "name": "budget-app",
-  "version": "0.9.3",
+  "version": "0.9.5",
   "private": true,
   "packageManager": "pnpm@9.15.0",
   "scripts": {
@@ -21,7 +21,12 @@
     "build:server:bundle": "esbuild packages/server/src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/standalone/api-server/index.mjs --external:@electric-sql/pglite",
     "build:installer": "node installer/build-installer.js",
     "build:installer:quick": "node installer/build-installer.js --skip-build",
-    "build:standalone": "node installer/build-installer.js --skip-inno"
+    "build:standalone": "node installer/build-installer.js --skip-inno",
+    "build:linux": "node installer/build-cross-platform.js --platform linux",
+    "build:linux:quick": "node installer/build-cross-platform.js --platform linux --skip-build",
+    "build:darwin": "node installer/build-cross-platform.js --platform darwin",
+    "build:darwin:quick": "node installer/build-cross-platform.js --platform darwin --skip-build",
+    "build:all": "node installer/build-installer.js --skip-inno && node installer/build-cross-platform.js --platform linux --skip-build && node installer/build-cross-platform.js --platform darwin --skip-build"
   },
   "dependencies": {
     "@capacitor/core": "^8.0.2",

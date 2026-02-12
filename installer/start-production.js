@@ -121,6 +121,7 @@ function startApiServer(apiPort) {
   apiProcess = spawn(process.execPath, [serverEntry], {
     cwd: path.join(APP_DIR, 'api-server'),
     stdio: ['ignore', 'pipe', 'pipe'],
+    detached: process.platform !== 'win32',
     env: {
       ...process.env,
       NODE_ENV: 'production',
@@ -168,6 +169,7 @@ function startWebServer(webPort) {
   webProcess = spawn(process.execPath, [serverEntry], {
     cwd: APP_DIR,
     stdio: ['ignore', 'pipe', 'pipe'],
+    detached: process.platform !== 'win32',
     env: {
       ...process.env,
       NODE_ENV: 'production',
@@ -204,9 +206,31 @@ function startWebServer(webPort) {
  */
 function openBrowser(url) {
   try {
-    execSync(`start "" "${url}"`, { stdio: 'ignore', shell: true });
+    if (process.platform === 'win32') {
+      execSync(`start "" "${url}"`, { stdio: 'ignore', shell: true });
+    } else if (process.platform === 'darwin') {
+      execSync(`open "${url}"`, { stdio: 'ignore' });
+    } else {
+      execSync(`xdg-open "${url}"`, { stdio: 'ignore' });
+    }
   } catch {
     console.log(`Open your browser to: ${url}`);
+  }
+}
+
+/**
+ * Kill a child process tree (cross-platform).
+ */
+function killChild(child) {
+  if (!child) return;
+  if (process.platform === 'win32') {
+    try {
+      spawn('taskkill', ['/pid', child.pid.toString(), '/f', '/t'], { stdio: 'ignore' });
+    } catch { /* ignore */ }
+  } else {
+    try {
+      process.kill(-child.pid, 'SIGTERM');
+    } catch { /* ignore */ }
   }
 }
 
@@ -219,19 +243,8 @@ async function shutdown(exitCode = 0) {
 
   console.log('\nShutting down...');
 
-  // Kill web server
-  if (webProcess) {
-    try {
-      spawn('taskkill', ['/pid', webProcess.pid.toString(), '/f', '/t'], { stdio: 'ignore' });
-    } catch { /* ignore */ }
-  }
-
-  // Kill API server
-  if (apiProcess) {
-    try {
-      spawn('taskkill', ['/pid', apiProcess.pid.toString(), '/f', '/t'], { stdio: 'ignore' });
-    } catch { /* ignore */ }
-  }
+  killChild(webProcess);
+  killChild(apiProcess);
 
   removePidFile();
 
