@@ -1,10 +1,10 @@
-# Budget App Windows Installer
+# Budget App Installer & Distribution
 
-This directory contains everything needed to create a self-contained Windows installer for Budget App.
+This directory contains everything needed to create self-contained distributions of Budget App for Windows, Linux, and macOS.
 
 ## What Gets Installed
 
-The installer creates a standalone Budget App with:
+Each distribution is a standalone Budget App with:
 - **Hono API server** — handles all data operations (port 3401)
 - **Next.js web client** — serves the UI (port 3400)
 - **PGlite database** — local PostgreSQL (no external DB needed)
@@ -13,88 +13,130 @@ The installer creates a standalone Budget App with:
 ## Prerequisites (For Building)
 
 1. **Node.js 20+** and **pnpm** — For building the app
-2. **Inno Setup 6+** — For creating the installer (optional)
-   - Download from: https://jrsoftware.org/isinfo.php
+2. **NSIS 3+** — For creating Windows `.exe` installers (optional)
+   - Download from: https://nsis.sourceforge.io/Download
+   - Or: `winget install NSIS.NSIS`
 
-## Building the Installer
+## Building
 
-### Quick Start
+### All Platforms (Windows + Linux + macOS)
 
 ```bash
-# Full build: Next.js + API server bundle + download Node.js + create installer
+pnpm build:all
+```
+
+This runs the Windows build first (full Next.js + API server build), then creates Linux and macOS packages reusing the same build artifacts.
+
+### Windows Only
+
+```bash
+# Full build with NSIS installer
 pnpm build:installer
-```
 
-### Other Build Options
-
-```bash
-# Skip Next.js and API server builds (if you already built them)
-pnpm build:installer:quick
-
-# Create standalone package without Inno Setup installer
+# Full build without NSIS installer (just distribution folders)
 pnpm build:standalone
+
+# Skip app build, repackage only
+pnpm build:installer:quick
 ```
 
-### Manual Build Steps
-
-If you prefer to build step by step:
-
-1. **Build Next.js in standalone mode:**
-   ```bash
-   pnpm build
-   ```
-
-2. **Bundle API server:**
-   ```bash
-   pnpm build:server:bundle
-   ```
-
-3. **Run the build script (skip builds, package only):**
-   ```bash
-   node installer/build-installer.js --skip-build
-   ```
-
-4. **Or compile installer manually with Inno Setup:**
-   - Open `installer/budget-app.iss` in Inno Setup
-   - Click "Compile" or press F9
-
-## Output Files
-
-After building, you'll find:
-
-```
-dist/
-├── standalone/              # Self-contained app package
-│   ├── server.js            # Next.js web server entry
-│   ├── start-production.js  # Dual-server startup script
-│   ├── .next/               # Compiled web app
-│   ├── public/              # Static assets
-│   └── api-server/
-│       ├── index.mjs        # Bundled API server (esbuild)
-│       └── node_modules/
-│           └── @electric-sql/
-│               └── pglite/  # PGlite with WASM files
-├── node/
-│   └── node.exe             # Portable Node.js runtime
-└── BudgetApp-2.0.0-Setup.exe  # Windows installer (if Inno Setup installed)
-```
-
-## Testing Locally
-
-Before creating the installer, test the standalone build:
+### Linux Only
 
 ```bash
-cd dist/standalone
-..\node\node.exe start-production.js
+# Full build (builds app + creates Linux packages)
+pnpm build:linux
+
+# Skip app build (use existing build artifacts)
+pnpm build:linux:quick
 ```
 
-Then open http://localhost:3400 in your browser.
+### macOS Only
+
+```bash
+# Full build
+pnpm build:darwin
+
+# Skip app build
+pnpm build:darwin:quick
+```
+
+### Manual / Advanced
+
+```bash
+# Build app once, then package for specific platforms
+pnpm build:standalone                                              # Windows
+node installer/build-cross-platform.js --platform linux --skip-build   # Linux
+node installer/build-cross-platform.js --platform darwin --skip-build  # macOS
+
+# Build for all non-Windows platforms at once
+node installer/build-cross-platform.js --platform all --skip-build
+
+# Skip archive creation (just folders, no .tar.gz)
+node installer/build-cross-platform.js --platform linux --skip-build --skip-archive
+```
+
+## Output
+
+After building, you'll find distribution packages in `distribute/`:
+
+### Windows
+```
+distribute/
+  BudgetApp-Server-0.9.3/           # API server only
+  BudgetApp-Client-0.9.3/           # Web client only
+  BudgetApp-Full-0.9.3/             # Combined (server + client)
+  BudgetApp-Full-0.9.3-Setup.exe    # NSIS installer (if NSIS installed)
+```
+
+### Linux
+```
+distribute/
+  BudgetApp-Server-0.9.3-linux-x64/
+  BudgetApp-Client-0.9.3-linux-x64/
+  BudgetApp-Full-0.9.3-linux-x64/
+  BudgetApp-Full-0.9.3-linux-x64.tar.gz    # Ready to distribute
+  BudgetApp-Server-0.9.3-linux-x64.tar.gz
+  BudgetApp-Client-0.9.3-linux-x64.tar.gz
+```
+
+### macOS
+```
+distribute/
+  BudgetApp-Full-0.9.3-darwin-x64/
+  BudgetApp-Full-0.9.3-darwin-x64.tar.gz
+  ...
+```
+
+## Installing on Linux / macOS
+
+1. Extract the archive:
+   ```bash
+   tar xzf BudgetApp-Full-0.9.3-linux-x64.tar.gz
+   cd BudgetApp-Full-0.9.3-linux-x64
+   ```
+
+2. Set permissions (required after extracting on a new machine):
+   ```bash
+   chmod +x install.sh && ./install.sh
+   ```
+
+3. Start the app:
+   ```bash
+   ./start.sh
+   ```
+
+4. Open http://localhost:3400 in your browser.
+
+5. To stop:
+   ```bash
+   ./stop.sh
+   ```
 
 ## Architecture
 
 ```
-start.bat
-  └── node.exe start-production.js
+start.sh / start.bat
+  └── node start-production.js (or start.js)
         ├── Spawns: node api-server/index.mjs  (port 3401)
         │   └── Hono API server with PGlite database
         ├── Waits for API health check
@@ -103,22 +145,13 @@ start.bat
         └── Opens browser to http://localhost:3400
 ```
 
-## Installer Features
+## Package Types
 
-- **Desktop shortcut** (optional)
-- **Start menu entries** — Start/Stop Budget App, Uninstall
-- **Auto-start with Windows** (optional)
-- **Data preservation** — Asks to keep data on uninstall
-- **Port conflict detection** — Warns if port 3400 or 3401 is in use
-
-## User Experience
-
-After installation, users:
-
-1. Double-click "Budget App" shortcut
-2. Both servers start and browser opens automatically
-3. Use the app at `http://localhost:3400`
-4. Data is stored in `%PROGRAMFILES%\Budget App\data\`
+| Package | Contents | Use Case |
+|---------|----------|----------|
+| **Server** | API server + Node.js + PGlite | Run API on a server, connect client from another machine |
+| **Client** | Next.js web app + Node.js | Connect to an API server running elsewhere |
+| **Full** | Server + Client combined | Self-contained, single-machine deployment |
 
 ## Port Configuration
 
@@ -133,7 +166,13 @@ API_PORT=3401
 SERVER_PORT=3400
 ```
 
-**Note:** The API port is baked into the Next.js build (for the `/api/*` proxy). Changing `API_PORT` after installation requires rebuilding the Next.js app.
+**Note:** The API port is baked into the Next.js build (for the `/api/*` proxy). Changing `API_PORT` after installation requires rebuilding.
+
+## Windows Installer Features
+
+- **Desktop shortcut** and **Start menu entries**
+- **Data preservation** — Asks to keep data on uninstall
+- **Self-contained** — Bundled Node.js, no system dependencies
 
 ## Customization
 
@@ -147,12 +186,12 @@ Place a 256x256 ICO file at `public/icon.ico` before building.
 
 Another application is using the port. Either:
 - Stop the other application
-- Run `stop.bat` to stop a previous Budget App instance
+- Run `stop.sh` / `stop.bat` to stop a previous Budget App instance
 - Change the port in `.env` (API port change requires rebuild)
 
 ### "Node.js not found"
 
-The `node.exe` file is missing. Re-run the build script or ensure the installer was created correctly.
+The bundled `node` binary is missing. Re-run the build script or ensure the archive was extracted correctly. On Linux/macOS, run `./install.sh` to set executable permissions.
 
 ### Server crashes immediately
 
@@ -164,9 +203,11 @@ Check the console output for errors. Common issues:
 
 | File | Purpose |
 |------|---------|
-| `build-installer.js` | Orchestrates the full build process (Next.js + esbuild + packaging) |
-| `start-production.js` | Node.js script that starts both API and web servers |
-| `budget-app.iss` | Inno Setup script for creating the Windows installer |
+| `build-installer.js` | Windows build: Next.js + esbuild + packaging + NSIS installers |
+| `build-cross-platform.js` | Linux/macOS build: cross-platform packaging with .tar.gz archives |
+| `build-utils.js` | Shared utilities used by both build scripts |
+| `start-production.js` | Node.js script that starts both API and web servers (platform-aware) |
+| `budget-app.iss` | Legacy Inno Setup script (NSIS is now preferred) |
 | `start.bat` | Windows batch file to launch the app |
 | `stop.bat` | Windows batch file to stop the app |
 | `README.md` | This file |
