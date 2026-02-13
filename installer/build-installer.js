@@ -32,6 +32,7 @@ const {
   log, logStep, logSuccess, logWarning, logError,
   downloadFile, extractZip, copyDir, cleanDir, getDirSize,
   stripUnnecessaryModules, fixPnpmLayout, findMakeNsis, buildNsisInstaller,
+  generateServerStartJs, generateClientStartJs, generateFullStartJs,
 } = require('./build-utils');
 
 // Windows-specific paths
@@ -320,97 +321,8 @@ async function createDistribution() {
     fs.copyFileSync(envExample, path.join(serverDir, '.env.example'));
   }
 
-  // Server startup script (Windows, uses taskkill)
-  fs.writeFileSync(path.join(serverDir, 'start-server.js'), `#!/usr/bin/env node
-/**
- * Budget App API Server — Standalone Startup
- * Starts the Hono API server with PGlite local database.
- */
-const { spawn, execSync } = require('child_process');
-const path = require('path');
-const fs = require('fs');
-const http = require('http');
-
-const APP_DIR = __dirname;
-const DEFAULT_API_PORT = 3401;
-
-function readEnvVar(name, defaultValue) {
-  const envPath = path.join(APP_DIR, '.env');
-  if (fs.existsSync(envPath)) {
-    const content = fs.readFileSync(envPath, 'utf8');
-    const match = content.match(new RegExp(\`^\${name}=(.+)\`, 'm'));
-    if (match) return match[1].trim();
-  }
-  if (process.env[name]) return process.env[name];
-  return defaultValue;
-}
-
-function writePidFile() {
-  const dataDir = path.join(APP_DIR, 'data');
-  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-  fs.writeFileSync(path.join(dataDir, '.pid'), process.pid.toString(), 'utf8');
-}
-
-function removePidFile() {
-  try { fs.unlinkSync(path.join(APP_DIR, 'data', '.pid')); } catch {}
-}
-
-async function main() {
-  const apiPort = parseInt(readEnvVar('API_PORT', String(DEFAULT_API_PORT)), 10);
-
-  console.log('');
-  console.log('========================================');
-  console.log('     Budget App API Server');
-  console.log('========================================');
-  console.log('');
-  console.log('  API server:  http://localhost:' + apiPort);
-  console.log('  Health:      http://localhost:' + apiPort + '/health');
-  console.log('  Data:        ' + path.join(APP_DIR, 'data', 'budget-local'));
-  console.log('');
-  console.log('  Press Ctrl+C to stop');
-  console.log('');
-
-  const dataDir = path.join(APP_DIR, 'data');
-  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-
-  writePidFile();
-
-  const serverEntry = path.join(APP_DIR, 'api-server', 'index.mjs');
-  if (!fs.existsSync(serverEntry)) {
-    console.error('API server not found at ' + serverEntry);
-    process.exit(1);
-  }
-
-  const child = spawn(process.execPath, [serverEntry], {
-    cwd: path.join(APP_DIR, 'api-server'),
-    stdio: 'inherit',
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
-      API_PORT: apiPort.toString(),
-      PGLITE_DB_LOCATION: path.join(APP_DIR, 'data', 'budget-local'),
-    },
-  });
-
-  child.on('close', (code) => {
-    removePidFile();
-    process.exit(code || 0);
-  });
-
-  process.on('SIGINT', () => {
-    try { spawn('taskkill', ['/pid', child.pid.toString(), '/f', '/t'], { stdio: 'ignore' }); } catch {}
-    removePidFile();
-    setTimeout(() => process.exit(0), 1000);
-  });
-  process.on('SIGTERM', () => {
-    try { spawn('taskkill', ['/pid', child.pid.toString(), '/f', '/t'], { stdio: 'ignore' }); } catch {}
-    removePidFile();
-    setTimeout(() => process.exit(0), 1000);
-  });
-}
-
-main();
-`, 'utf8');
+  // Server startup script (shared generator — uses string concatenation, no template literals)
+  fs.writeFileSync(path.join(serverDir, 'start-server.js'), generateServerStartJs(), 'utf8');
 
   fs.writeFileSync(path.join(serverDir, 'start-server.bat'), `@echo off
 setlocal enabledelayedexpansion
@@ -492,100 +404,8 @@ pause
   log('  Stripping unnecessary platform binaries...');
   stripUnnecessaryModules(path.join(clientDir, 'node_modules'));
 
-  fs.writeFileSync(path.join(clientDir, 'start-client.js'), `#!/usr/bin/env node
-/**
- * Budget App Web Client — Standalone Startup
- * Starts the Next.js web server.
- */
-const { spawn, execSync } = require('child_process');
-const path = require('path');
-const fs = require('fs');
-
-const APP_DIR = __dirname;
-const DEFAULT_WEB_PORT = 3400;
-const DEFAULT_API_PORT = 3401;
-
-function readEnvVar(name, defaultValue) {
-  const envPath = path.join(APP_DIR, '.env');
-  if (fs.existsSync(envPath)) {
-    const content = fs.readFileSync(envPath, 'utf8');
-    const match = content.match(new RegExp(\`^\${name}=(.+)\`, 'm'));
-    if (match) return match[1].trim();
-  }
-  if (process.env[name]) return process.env[name];
-  return defaultValue;
-}
-
-function writePidFile() {
-  const dataDir = path.join(APP_DIR, 'data');
-  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-  fs.writeFileSync(path.join(dataDir, '.pid'), process.pid.toString(), 'utf8');
-}
-
-function removePidFile() {
-  try { fs.unlinkSync(path.join(APP_DIR, 'data', '.pid')); } catch {}
-}
-
-function openBrowser(url) {
-  try { execSync('start "" "' + url + '"', { stdio: 'ignore', shell: true }); }
-  catch { console.log('Open your browser to: ' + url); }
-}
-
-async function main() {
-  const webPort = parseInt(readEnvVar('SERVER_PORT', String(DEFAULT_WEB_PORT)), 10);
-  const apiPort = parseInt(readEnvVar('API_PORT', String(DEFAULT_API_PORT)), 10);
-
-  console.log('');
-  console.log('========================================');
-  console.log('     Budget App Web Client');
-  console.log('========================================');
-  console.log('');
-  console.log('  Web app:     http://localhost:' + webPort);
-  console.log('  API server:  http://localhost:' + apiPort + ' (must be running separately)');
-  console.log('');
-  console.log('  Press Ctrl+C to stop');
-  console.log('');
-
-  const serverEntry = path.join(APP_DIR, 'server.js');
-  if (!fs.existsSync(serverEntry)) {
-    console.error('Next.js server not found at ' + serverEntry);
-    process.exit(1);
-  }
-
-  writePidFile();
-
-  const child = spawn(process.execPath, [serverEntry], {
-    cwd: APP_DIR,
-    stdio: 'inherit',
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
-      PORT: webPort.toString(),
-      HOSTNAME: '0.0.0.0',
-    },
-  });
-
-  setTimeout(() => openBrowser('http://localhost:' + webPort), 2000);
-
-  child.on('close', (code) => {
-    removePidFile();
-    process.exit(code || 0);
-  });
-
-  process.on('SIGINT', () => {
-    try { spawn('taskkill', ['/pid', child.pid.toString(), '/f', '/t'], { stdio: 'ignore' }); } catch {}
-    removePidFile();
-    setTimeout(() => process.exit(0), 1000);
-  });
-  process.on('SIGTERM', () => {
-    try { spawn('taskkill', ['/pid', child.pid.toString(), '/f', '/t'], { stdio: 'ignore' }); } catch {}
-    removePidFile();
-    setTimeout(() => process.exit(0), 1000);
-  });
-}
-
-main();
-`, 'utf8');
+  // Client startup script (shared generator — uses string concatenation, no template literals)
+  fs.writeFileSync(path.join(clientDir, 'start-client.js'), generateClientStartJs(), 'utf8');
 
   fs.writeFileSync(path.join(clientDir, 'start-client.bat'), `@echo off
 setlocal enabledelayedexpansion
@@ -676,11 +496,8 @@ pause
     fs.copyFileSync(envExample, path.join(fullDir, '.env.example'));
   }
 
-  // Copy start-production.js for the full package
-  fs.copyFileSync(
-    path.join(__dirname, 'start-production.js'),
-    path.join(fullDir, 'start-production.js')
-  );
+  // Full startup script (shared generator — uses string concatenation, no template literals)
+  fs.writeFileSync(path.join(fullDir, 'start.js'), generateFullStartJs(), 'utf8');
 
   fs.writeFileSync(path.join(fullDir, 'start.bat'), `@echo off
 setlocal enabledelayedexpansion
@@ -703,7 +520,7 @@ if exist "node.exe" (
     set "NODE_CMD=node"
 )
 
-"%NODE_CMD%" start-production.js
+"%NODE_CMD%" start.js
 
 echo.
 echo Budget App stopped.

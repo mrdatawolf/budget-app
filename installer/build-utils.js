@@ -484,6 +484,524 @@ SectionEnd
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
 
+// =============================================================================
+// Startup Script Generators
+// =============================================================================
+// These generate platform-safe JS startup scripts. They deliberately use
+// var / function / string-concatenation (no template literals, no const/let,
+// no arrow functions) so the output runs on any Node >= 12 and avoids
+// the backtick-escaping pitfall that breaks when scripts are written from
+// inside a template literal string.
+
+/**
+ * Generate a platform-aware Node.js startup script for the Server package.
+ */
+function generateServerStartJs() {
+  return `#!/usr/bin/env node
+/**
+ * Budget App API Server - Standalone Startup
+ * Starts the Hono API server with PGlite local database.
+ */
+var spawn = require('child_process').spawn;
+var path = require('path');
+var fs = require('fs');
+
+var APP_DIR = __dirname;
+var DEFAULT_API_PORT = 3401;
+var isWindows = process.platform === 'win32';
+
+function readEnvVar(name, defaultValue) {
+  var envPath = path.join(APP_DIR, '.env');
+  if (fs.existsSync(envPath)) {
+    var content = fs.readFileSync(envPath, 'utf8');
+    var match = content.match(new RegExp('^' + name + '=(.+)', 'm'));
+    if (match) return match[1].trim();
+  }
+  if (process.env[name]) return process.env[name];
+  return defaultValue;
+}
+
+function writePidFile() {
+  var dataDir = path.join(APP_DIR, 'data');
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  fs.writeFileSync(path.join(dataDir, '.pid'), process.pid.toString(), 'utf8');
+}
+
+function removePidFile() {
+  try { fs.unlinkSync(path.join(APP_DIR, 'data', '.pid')); } catch (e) {}
+}
+
+function killChild(child) {
+  if (!child) return;
+  if (isWindows) {
+    try { spawn('taskkill', ['/pid', child.pid.toString(), '/f', '/t'], { stdio: 'ignore' }); } catch (e) {}
+  } else {
+    try { process.kill(-child.pid, 'SIGTERM'); } catch (e) {}
+  }
+}
+
+function main() {
+  var apiPort = parseInt(readEnvVar('API_PORT', String(DEFAULT_API_PORT)), 10);
+
+  console.log('');
+  console.log('========================================');
+  console.log('     Budget App API Server');
+  console.log('========================================');
+  console.log('');
+  console.log('  API server:  http://localhost:' + apiPort);
+  console.log('  Health:      http://localhost:' + apiPort + '/health');
+  console.log('  Data:        ' + path.join(APP_DIR, 'data', 'budget-local'));
+  console.log('');
+  console.log('  Press Ctrl+C to stop');
+  console.log('');
+
+  var dataDir = path.join(APP_DIR, 'data');
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+
+  writePidFile();
+
+  var serverEntry = path.join(APP_DIR, 'api-server', 'index.mjs');
+  if (!fs.existsSync(serverEntry)) {
+    console.error('API server not found at ' + serverEntry);
+    process.exit(1);
+  }
+
+  var child = spawn(process.execPath, [serverEntry], {
+    cwd: path.join(APP_DIR, 'api-server'),
+    stdio: 'inherit',
+    detached: !isWindows,
+    env: Object.assign({}, process.env, {
+      NODE_ENV: 'production',
+      API_PORT: apiPort.toString(),
+      PGLITE_DB_LOCATION: path.join(APP_DIR, 'data', 'budget-local'),
+    }),
+  });
+
+  child.on('close', function (code) {
+    removePidFile();
+    process.exit(code || 0);
+  });
+
+  function shutdown() {
+    killChild(child);
+    removePidFile();
+    setTimeout(function () { process.exit(0); }, 1000);
+  }
+
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+}
+
+main();
+`;
+}
+
+/**
+ * Generate a platform-aware Node.js startup script for the Client package.
+ */
+function generateClientStartJs() {
+  return `#!/usr/bin/env node
+/**
+ * Budget App Web Client - Standalone Startup
+ * Starts the Next.js web server.
+ */
+var spawn = require('child_process').spawn;
+var execSync = require('child_process').execSync;
+var path = require('path');
+var fs = require('fs');
+
+var APP_DIR = __dirname;
+var DEFAULT_WEB_PORT = 3400;
+var DEFAULT_API_PORT = 3401;
+var isWindows = process.platform === 'win32';
+
+function readEnvVar(name, defaultValue) {
+  var envPath = path.join(APP_DIR, '.env');
+  if (fs.existsSync(envPath)) {
+    var content = fs.readFileSync(envPath, 'utf8');
+    var match = content.match(new RegExp('^' + name + '=(.+)', 'm'));
+    if (match) return match[1].trim();
+  }
+  if (process.env[name]) return process.env[name];
+  return defaultValue;
+}
+
+function writePidFile() {
+  var dataDir = path.join(APP_DIR, 'data');
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  fs.writeFileSync(path.join(dataDir, '.pid'), process.pid.toString(), 'utf8');
+}
+
+function removePidFile() {
+  try { fs.unlinkSync(path.join(APP_DIR, 'data', '.pid')); } catch (e) {}
+}
+
+function killChild(child) {
+  if (!child) return;
+  if (isWindows) {
+    try { spawn('taskkill', ['/pid', child.pid.toString(), '/f', '/t'], { stdio: 'ignore' }); } catch (e) {}
+  } else {
+    try { process.kill(-child.pid, 'SIGTERM'); } catch (e) {}
+  }
+}
+
+function openBrowser(url) {
+  try {
+    if (isWindows) {
+      execSync('start "" "' + url + '"', { stdio: 'ignore', shell: true });
+    } else if (process.platform === 'darwin') {
+      execSync('open "' + url + '"', { stdio: 'ignore' });
+    } else {
+      execSync('xdg-open "' + url + '"', { stdio: 'ignore' });
+    }
+  } catch (e) {
+    console.log('Open your browser to: ' + url);
+  }
+}
+
+function main() {
+  var webPort = parseInt(readEnvVar('SERVER_PORT', String(DEFAULT_WEB_PORT)), 10);
+  var apiPort = parseInt(readEnvVar('API_PORT', String(DEFAULT_API_PORT)), 10);
+
+  console.log('');
+  console.log('========================================');
+  console.log('     Budget App Web Client');
+  console.log('========================================');
+  console.log('');
+  console.log('  Web app:     http://localhost:' + webPort);
+  console.log('  API server:  http://localhost:' + apiPort + ' (must be running separately)');
+  console.log('');
+  console.log('  Press Ctrl+C to stop');
+  console.log('');
+
+  var serverEntry = path.join(APP_DIR, 'server.js');
+  if (!fs.existsSync(serverEntry)) {
+    console.error('Next.js server not found at ' + serverEntry);
+    process.exit(1);
+  }
+
+  writePidFile();
+
+  var child = spawn(process.execPath, [serverEntry], {
+    cwd: APP_DIR,
+    stdio: 'inherit',
+    detached: !isWindows,
+    env: Object.assign({}, process.env, {
+      NODE_ENV: 'production',
+      PORT: webPort.toString(),
+      HOSTNAME: '0.0.0.0',
+    }),
+  });
+
+  setTimeout(function () { openBrowser('http://localhost:' + webPort); }, 2000);
+
+  child.on('close', function (code) {
+    removePidFile();
+    process.exit(code || 0);
+  });
+
+  function shutdown() {
+    killChild(child);
+    removePidFile();
+    setTimeout(function () { process.exit(0); }, 1000);
+  }
+
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+}
+
+main();
+`;
+}
+
+/**
+ * Generate a platform-aware Node.js startup script for the Full (combined) package.
+ */
+function generateFullStartJs() {
+  return `#!/usr/bin/env node
+/**
+ * Budget App - Combined Startup
+ * Starts the Hono API server, waits for health, then starts the Next.js web client.
+ */
+var spawn = require('child_process').spawn;
+var execSync = require('child_process').execSync;
+var path = require('path');
+var fs = require('fs');
+var http = require('http');
+
+var APP_DIR = __dirname;
+var DEFAULT_WEB_PORT = 3400;
+var DEFAULT_API_PORT = 3401;
+var isWindows = process.platform === 'win32';
+
+var API_PREFIX = '\\x1b[36m[API]\\x1b[0m';
+var WEB_PREFIX = '\\x1b[35m[WEB]\\x1b[0m';
+
+function readEnvVar(name, defaultValue) {
+  var envPath = path.join(APP_DIR, '.env');
+  if (fs.existsSync(envPath)) {
+    var content = fs.readFileSync(envPath, 'utf8');
+    var match = content.match(new RegExp('^' + name + '=(.+)', 'm'));
+    if (match) return match[1].trim();
+  }
+  if (process.env[name]) return process.env[name];
+  return defaultValue;
+}
+
+function writePidFile() {
+  var dataDir = path.join(APP_DIR, 'data');
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  fs.writeFileSync(path.join(dataDir, '.pid'), process.pid.toString(), 'utf8');
+}
+
+function removePidFile() {
+  try { fs.unlinkSync(path.join(APP_DIR, 'data', '.pid')); } catch (e) {}
+}
+
+function killChild(child) {
+  if (!child) return;
+  if (isWindows) {
+    try { spawn('taskkill', ['/pid', child.pid.toString(), '/f', '/t'], { stdio: 'ignore' }); } catch (e) {}
+  } else {
+    try { process.kill(-child.pid, 'SIGTERM'); } catch (e) {}
+  }
+}
+
+function openBrowser(url) {
+  try {
+    if (isWindows) {
+      execSync('start "" "' + url + '"', { stdio: 'ignore', shell: true });
+    } else if (process.platform === 'darwin') {
+      execSync('open "' + url + '"', { stdio: 'ignore' });
+    } else {
+      execSync('xdg-open "' + url + '"', { stdio: 'ignore' });
+    }
+  } catch (e) {
+    console.log('Open your browser to: ' + url);
+  }
+}
+
+function waitForHealth(port, timeoutMs) {
+  timeoutMs = timeoutMs || 15000;
+  var start = Date.now();
+  var interval = 500;
+
+  return new Promise(function (resolve, reject) {
+    function check() {
+      if (Date.now() - start > timeoutMs) {
+        reject(new Error('API server health check timed out after ' + timeoutMs + 'ms'));
+        return;
+      }
+
+      var req = http.get('http://localhost:' + port + '/health', function (res) {
+        if (res.statusCode === 200) {
+          console.log(API_PREFIX + ' Health check passed');
+          resolve(true);
+        } else {
+          setTimeout(check, interval);
+        }
+      });
+
+      req.on('error', function () {
+        setTimeout(check, interval);
+      });
+
+      req.setTimeout(2000, function () {
+        req.destroy();
+        setTimeout(check, interval);
+      });
+    }
+
+    check();
+  });
+}
+
+var apiChild = null;
+var webChild = null;
+var shuttingDown = false;
+
+function shutdown(exitCode) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  exitCode = exitCode || 0;
+
+  console.log('');
+  console.log('Shutting down...');
+
+  killChild(webChild);
+  killChild(apiChild);
+
+  removePidFile();
+  setTimeout(function () { process.exit(exitCode); }, 1000);
+}
+
+async function main() {
+  var webPort = parseInt(readEnvVar('SERVER_PORT', String(DEFAULT_WEB_PORT)), 10);
+  var apiPort = parseInt(readEnvVar('API_PORT', String(DEFAULT_API_PORT)), 10);
+
+  console.log('');
+  console.log('========================================');
+  console.log('           Budget App');
+  console.log('========================================');
+  console.log('');
+  console.log('  Web app:     http://localhost:' + webPort);
+  console.log('  API server:  http://localhost:' + apiPort);
+  console.log('  Data:        ' + path.join(APP_DIR, 'data', 'budget-local'));
+  console.log('');
+  console.log('  Press Ctrl+C to stop');
+  console.log('');
+
+  var dataDir = path.join(APP_DIR, 'data');
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+
+  writePidFile();
+
+  // 1. Start API server
+  var serverEntry = path.join(APP_DIR, 'api-server', 'index.mjs');
+  if (!fs.existsSync(serverEntry)) {
+    console.error('API server not found at ' + serverEntry);
+    process.exit(1);
+  }
+
+  console.log(API_PREFIX + ' Starting API server...');
+  apiChild = spawn(process.execPath, [serverEntry], {
+    cwd: path.join(APP_DIR, 'api-server'),
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: !isWindows,
+    env: Object.assign({}, process.env, {
+      NODE_ENV: 'production',
+      API_PORT: apiPort.toString(),
+      PGLITE_DB_LOCATION: path.join(APP_DIR, 'data', 'budget-local'),
+    }),
+  });
+
+  apiChild.stdout.on('data', function (data) {
+    var lines = data.toString().split('\\n').filter(Boolean);
+    for (var i = 0; i < lines.length; i++) console.log(API_PREFIX + ' ' + lines[i]);
+  });
+  apiChild.stderr.on('data', function (data) {
+    var lines = data.toString().split('\\n').filter(Boolean);
+    for (var i = 0; i < lines.length; i++) console.error(API_PREFIX + ' ' + lines[i]);
+  });
+  apiChild.on('close', function (code) {
+    apiChild = null;
+    if (!shuttingDown) {
+      console.error(API_PREFIX + ' API server exited with code ' + code);
+      shutdown(code || 1);
+    }
+  });
+
+  // 2. Wait for health check
+  try {
+    await waitForHealth(apiPort);
+  } catch (err) {
+    console.error('Failed to start API server: ' + err.message);
+    shutdown(1);
+    return;
+  }
+
+  // 3. Start Next.js web client
+  var clientEntry = path.join(APP_DIR, 'server.js');
+  if (!fs.existsSync(clientEntry)) {
+    console.error('Next.js server not found at ' + clientEntry);
+    shutdown(1);
+    return;
+  }
+
+  console.log(WEB_PREFIX + ' Starting web client...');
+  webChild = spawn(process.execPath, [clientEntry], {
+    cwd: APP_DIR,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: !isWindows,
+    env: Object.assign({}, process.env, {
+      NODE_ENV: 'production',
+      PORT: webPort.toString(),
+      HOSTNAME: '0.0.0.0',
+    }),
+  });
+
+  webChild.stdout.on('data', function (data) {
+    var lines = data.toString().split('\\n').filter(Boolean);
+    for (var i = 0; i < lines.length; i++) console.log(WEB_PREFIX + ' ' + lines[i]);
+  });
+  webChild.stderr.on('data', function (data) {
+    var lines = data.toString().split('\\n').filter(Boolean);
+    for (var i = 0; i < lines.length; i++) console.error(WEB_PREFIX + ' ' + lines[i]);
+  });
+  webChild.on('close', function (code) {
+    webChild = null;
+    if (!shuttingDown) {
+      console.log(WEB_PREFIX + ' Web client exited with code ' + code);
+      shutdown(code || 1);
+    }
+  });
+
+  // 4. Open browser after short delay
+  setTimeout(function () { openBrowser('http://localhost:' + webPort); }, 2500);
+}
+
+process.on('SIGINT', function () { shutdown(0); });
+process.on('SIGTERM', function () { shutdown(0); });
+
+main();
+`;
+}
+
+/**
+ * Generate platform-specific shell scripts (bash).
+ */
+function generateStartSh(jsFile) {
+  return `#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+
+mkdir -p data
+
+if [ -x "$SCRIPT_DIR/node" ]; then
+    NODE_CMD="$SCRIPT_DIR/node"
+elif command -v node &>/dev/null; then
+    NODE_CMD="node"
+else
+    echo "ERROR: Node.js not found!"
+    exit 1
+fi
+
+"$NODE_CMD" ${jsFile}
+`;
+}
+
+function generateStopSh(serviceName) {
+  return `#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+
+if [ -f "data/.pid" ]; then
+    PID=$(cat data/.pid)
+    echo "Stopping ${serviceName} (PID: $PID)..."
+    kill -TERM "$PID" 2>/dev/null
+    sleep 2
+    kill -9 "$PID" 2>/dev/null
+    rm -f data/.pid
+    echo "Stopped."
+else
+    echo "No running instance found."
+fi
+`;
+}
+
+function generateInstallSh() {
+  return `#!/bin/bash
+# Sets executable permissions on scripts and the bundled Node.js binary.
+# Run this once after extracting the archive:  chmod +x install.sh && ./install.sh
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+
+chmod +x node *.sh 2>/dev/null
+echo "Permissions set. Run ./start.sh (or ./start-server.sh / ./start-client.sh) to launch Budget App."
+`;
+}
+
 module.exports = {
   // Constants
   APP_VERSION,
@@ -518,4 +1036,12 @@ module.exports = {
   // Installer tools
   findMakeNsis,
   buildNsisInstaller,
+
+  // Startup script generators
+  generateServerStartJs,
+  generateClientStartJs,
+  generateFullStartJs,
+  generateStartSh,
+  generateStopSh,
+  generateInstallSh,
 };
