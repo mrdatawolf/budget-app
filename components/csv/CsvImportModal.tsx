@@ -557,7 +557,7 @@ function UploadStep({
                   value={accountName}
                   onChange={e => onAccountNameChange(e.target.value)}
                   placeholder="e.g., Checking"
-                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full px-3 py-2 bg-surface text-text-primary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
               <div>
@@ -569,7 +569,7 @@ function UploadStep({
                   value={institutionName}
                   onChange={e => onInstitutionNameChange(e.target.value)}
                   placeholder="e.g., Chase Bank"
-                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full px-3 py-2 bg-surface text-text-primary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
             </div>
@@ -581,7 +581,7 @@ function UploadStep({
               <select
                 value={selectedAccountId}
                 onChange={e => onSelectedAccountIdChange(e.target.value)}
-                className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full px-3 py-2 bg-surface text-text-primary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="">Select an account...</option>
                 {existingAccounts.map(account => (
@@ -655,7 +655,7 @@ function MappingStep({
             <select
               value={columnMapping.dateColumn || ''}
               onChange={e => updateMapping('dateColumn', e.target.value)}
-              className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full px-3 py-2 bg-surface text-text-primary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value="">Select column...</option>
               {headers.map(h => (
@@ -672,7 +672,7 @@ function MappingStep({
             <select
               value={columnMapping.dateFormat || ''}
               onChange={e => updateMapping('dateFormat', e.target.value)}
-              className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full px-3 py-2 bg-surface text-text-primary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value="">Select format...</option>
               {DATE_FORMAT_PATTERNS.map(({ format, example }) => (
@@ -688,7 +688,7 @@ function MappingStep({
             <select
               value={columnMapping.descriptionColumn || ''}
               onChange={e => updateMapping('descriptionColumn', e.target.value || undefined)}
-              className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full px-3 py-2 bg-surface text-text-primary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value="">None</option>
               {headers.map(h => (
@@ -708,7 +708,7 @@ function MappingStep({
             <select
               value={columnMapping.merchantColumn || ''}
               onChange={e => updateMapping('merchantColumn', e.target.value || undefined)}
-              className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full px-3 py-2 bg-surface text-text-primary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value="">None</option>
               {headers.map(h => (
@@ -725,7 +725,7 @@ function MappingStep({
             <select
               value={columnMapping.statusColumn || ''}
               onChange={e => updateMapping('statusColumn', e.target.value || undefined)}
-              className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full px-3 py-2 bg-surface text-text-primary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value="">None</option>
               {headers.map(h => (
@@ -774,7 +774,7 @@ function MappingStep({
                 <select
                   value={columnMapping.amountColumn || ''}
                   onChange={e => updateMapping('amountColumn', e.target.value)}
-                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full px-3 py-2 bg-surface text-text-primary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="">Select column...</option>
                   {headers.map(h => (
@@ -796,7 +796,7 @@ function MappingStep({
                 <select
                   value={columnMapping.debitColumn || ''}
                   onChange={e => updateMapping('debitColumn', e.target.value)}
-                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full px-3 py-2 bg-surface text-text-primary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="">Select column...</option>
                   {headers.map(h => (
@@ -812,7 +812,7 @@ function MappingStep({
                 <select
                   value={columnMapping.creditColumn || ''}
                   onChange={e => updateMapping('creditColumn', e.target.value)}
-                  className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full px-3 py-2 bg-surface text-text-primary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="">Select column...</option>
                   {headers.map(h => (
@@ -846,7 +846,7 @@ function MappingStep({
         <h3 className="font-medium text-text-primary mb-3">Sample Data</h3>
         <div className="overflow-x-auto border border-border rounded-lg">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-surface-hover">
               <tr>
                 {headers.map(h => (
                   <th key={h} className="px-3 py-2 text-left font-medium text-text-secondary whitespace-nowrap">
@@ -895,8 +895,8 @@ function PreviewStep({
           <div className="text-2xl font-bold text-success">{totalCount - duplicateCount}</div>
           <div className="text-sm text-text-secondary">To import</div>
         </div>
-        <div className="bg-yellow-50 p-4 rounded-lg text-center">
-          <div className="text-2xl font-bold text-yellow-600">{duplicateCount}</div>
+        <div className="bg-warning-light p-4 rounded-lg text-center">
+          <div className="text-2xl font-bold text-warning">{duplicateCount}</div>
           <div className="text-sm text-text-secondary">Duplicates (skip)</div>
         </div>
         <div className="bg-danger-light p-4 rounded-lg text-center">
@@ -930,7 +930,7 @@ function PreviewStep({
         </h3>
         <div className="border border-border rounded-lg overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-surface-hover">
               <tr>
                 <th className="px-3 py-2 text-left font-medium text-text-secondary">Date</th>
                 <th className="px-3 py-2 text-left font-medium text-text-secondary">Description</th>
@@ -952,7 +952,7 @@ function PreviewStep({
                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                       t.type === 'income'
                         ? 'bg-success-light text-success'
-                        : 'bg-gray-100 text-text-secondary'
+                        : 'bg-surface-hover text-text-secondary'
                     }`}>
                       {t.type}
                     </span>

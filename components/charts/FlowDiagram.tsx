@@ -4,7 +4,7 @@ import { useRef, useEffect, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { sankey, sankeyLinkHorizontal, SankeyNode, SankeyLink } from 'd3-sankey';
 import { Budget } from '@/types/budget';
-import { transformBudgetToFlowData, hasIncomeAndExpenses } from '@/lib/chartHelpers';
+import { transformBudgetToFlowData, transformBudgetToDiscretionaryFlowData, hasIncomeAndExpenses, hasDiscretionarySpending } from '@/lib/chartHelpers';
 import { formatCurrency } from '@/lib/formatCurrency';
 import ChartTooltip from './ChartTooltip';
 import ChartEmptyState from './ChartEmptyState';
@@ -36,9 +36,13 @@ export default function FlowDiagram({ budget }: FlowDiagramProps) {
     y: 0,
     content: null as React.ReactNode,
   });
+  const [discretionaryMode, setDiscretionaryMode] = useState(false);
 
-  const flowData = useMemo(() => transformBudgetToFlowData(budget), [budget]);
+  const allFlowData = useMemo(() => transformBudgetToFlowData(budget), [budget]);
+  const discretionaryFlowData = useMemo(() => transformBudgetToDiscretionaryFlowData(budget), [budget]);
+  const flowData = discretionaryMode ? discretionaryFlowData : allFlowData;
   const hasData = hasIncomeAndExpenses(budget);
+  const hasDiscretionary = hasDiscretionarySpending(budget);
 
   useEffect(() => {
     if (!svgRef.current || !containerRef.current || !hasData || flowData.nodes.length === 0) return;
@@ -311,7 +315,7 @@ export default function FlowDiagram({ budget }: FlowDiagramProps) {
       .style('fill', '#6b7280')
       .style('text-transform', 'uppercase')
       .style('letter-spacing', '0.05em');
-  }, [flowData, hasData]);
+  }, [flowData, hasData, discretionaryMode]);
 
   if (!hasData) {
     return (
@@ -323,8 +327,41 @@ export default function FlowDiagram({ budget }: FlowDiagramProps) {
     );
   }
 
+  const toggle = (
+    <div className="flex items-center justify-end gap-2 mb-2">
+      <span className={`text-xs font-medium ${!discretionaryMode ? 'text-text-primary' : 'text-text-tertiary'}`}>
+        All Spending
+      </span>
+      <button
+        onClick={() => setDiscretionaryMode(!discretionaryMode)}
+        className={`relative w-10 h-5 rounded-full transition-colors ${discretionaryMode ? 'bg-primary' : 'bg-border'}`}
+      >
+        <span
+          className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${discretionaryMode ? 'translate-x-5' : 'translate-x-0'}`}
+        />
+      </button>
+      <span className={`text-xs font-medium ${discretionaryMode ? 'text-text-primary' : 'text-text-tertiary'}`}>
+        Discretionary
+      </span>
+    </div>
+  );
+
+  if (discretionaryMode && !hasDiscretionary) {
+    return (
+      <>
+        {toggle}
+        <ChartEmptyState
+          icon={<FaChartPie />}
+          title="No discretionary spending"
+          message="All your spending is linked to recurring payments. Non-recurring transactions will appear here."
+        />
+      </>
+    );
+  }
+
   return (
     <>
+      {toggle}
       <div ref={containerRef} className="w-full h-full">
         <svg ref={svgRef} className="w-full h-full" />
       </div>

@@ -3,7 +3,7 @@
 import { useRef, useEffect, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { Budget } from '@/types/budget';
-import { transformBudgetsToTrendData } from '@/lib/chartHelpers';
+import { transformBudgetsToTrendData, transformBudgetsToDiscretionaryTrendData } from '@/lib/chartHelpers';
 import { formatCurrency } from '@/lib/formatCurrency';
 import { getCategoryColor, getCategoryEmoji } from '@/lib/chartColors';
 import ChartTooltip from './ChartTooltip';
@@ -37,12 +37,16 @@ export default function SpendingTrendsChart({ budgets }: SpendingTrendsChartProp
     new Set(categoryKeys)
   );
 
+  const [discretionaryMode, setDiscretionaryMode] = useState(false);
+
   // Keep visibleCategories in sync when categoryKeys change
   useEffect(() => {
     setVisibleCategories(new Set(categoryKeys));
   }, [categoryKeys]);
 
-  const trendData = useMemo(() => transformBudgetsToTrendData(budgets), [budgets]);
+  const allTrendData = useMemo(() => transformBudgetsToTrendData(budgets), [budgets]);
+  const discretionaryTrendData = useMemo(() => transformBudgetsToDiscretionaryTrendData(budgets), [budgets]);
+  const trendData = discretionaryMode ? discretionaryTrendData : allTrendData;
 
   const toggleCategory = (key: string) => {
     setVisibleCategories((prev) => {
@@ -219,9 +223,29 @@ export default function SpendingTrendsChart({ budgets }: SpendingTrendsChartProp
     );
   }
 
+  const toggle = (
+    <div className="flex items-center justify-end gap-2 mb-2">
+      <span className={`text-xs font-medium ${!discretionaryMode ? 'text-text-primary' : 'text-text-tertiary'}`}>
+        All Spending
+      </span>
+      <button
+        onClick={() => setDiscretionaryMode(!discretionaryMode)}
+        className={`relative w-10 h-5 rounded-full transition-colors ${discretionaryMode ? 'bg-primary' : 'bg-border'}`}
+      >
+        <span
+          className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${discretionaryMode ? 'translate-x-5' : 'translate-x-0'}`}
+        />
+      </button>
+      <span className={`text-xs font-medium ${discretionaryMode ? 'text-text-primary' : 'text-text-tertiary'}`}>
+        Discretionary
+      </span>
+    </div>
+  );
+
   return (
     <>
       <div className="w-full h-full flex flex-col">
+        {toggle}
         {/* Legend */}
         <div className="flex flex-wrap gap-3 mb-4 px-2">
           {categoryKeys.map((key) => {
