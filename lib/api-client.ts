@@ -29,17 +29,47 @@ export class ApiError extends Error {
   }
 }
 
-// Get the API base URL from environment or default to relative path (same origin)
+// Get the API base URL: localStorage > env var > same-origin proxy
 function getBaseUrl(): string {
-  // In browser, check for environment variable
   if (typeof window !== 'undefined') {
+    // Check user-configured server URL first
+    const stored = localStorage.getItem('serverUrl');
+    if (stored) {
+      return stored;
+    }
+    // Fall back to build-time environment variable
     const envUrl = process.env.NEXT_PUBLIC_SERVER_URI;
     if (envUrl) {
       return envUrl;
     }
   }
-  // Default to same origin (Next.js API routes during migration)
+  // Default to same origin (Next.js proxy → Hono server)
   return '';
+}
+
+/**
+ * Check if the user has configured the server URL (made a choice during onboarding).
+ */
+export function isServerConfigured(): boolean {
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem('serverConfigured') === 'true';
+}
+
+/**
+ * Get the stored server URL. Empty string means "this machine" (local proxy).
+ */
+export function getServerUrl(): string {
+  if (typeof window === 'undefined') return '';
+  return localStorage.getItem('serverUrl') || '';
+}
+
+/**
+ * Save the server URL to localStorage. Pass empty string for local mode.
+ */
+export function setServerUrl(url: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('serverUrl', url);
+  localStorage.setItem('serverConfigured', 'true');
 }
 
 // Auth token storage (used for remote server mode)
@@ -634,6 +664,46 @@ export const onboardingApi = {
 };
 
 // ============================================================================
+// INCOME ALLOCATIONS API
+// ============================================================================
+
+export interface IncomeAllocation {
+  id: string;
+  userId: string;
+  incomeItemName: string;
+  targetCategoryType: string;
+  createdAt: string;
+}
+
+export const incomeAllocationApi = {
+  /**
+   * List all income allocations for the user.
+   */
+  async list(): Promise<IncomeAllocation[]> {
+    return request('/api/income-allocations');
+  },
+
+  /**
+   * Create or update an income allocation (upserts by incomeItemName).
+   */
+  async create(data: { incomeItemName: string; targetCategoryType: string }): Promise<IncomeAllocation> {
+    return request('/api/income-allocations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Delete an income allocation.
+   */
+  async delete(id: string): Promise<void> {
+    return request(`/api/income-allocations/${id}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
+// ============================================================================
 // DATABASE MANAGEMENT API
 // ============================================================================
 
@@ -724,6 +794,7 @@ export const api = {
   csv: csvApi,
   onboarding: onboardingApi,
   database: databaseApi,
+  incomeAllocation: incomeAllocationApi,
 };
 
 export default api;

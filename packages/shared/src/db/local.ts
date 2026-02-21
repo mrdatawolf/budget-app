@@ -389,6 +389,15 @@ async function initializeSchema(client: PGlite): Promise<void> {
       transaction_id UUID REFERENCES transactions(id) ON DELETE SET NULL,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    -- Income allocations table (links income items to expense categories)
+    CREATE TABLE IF NOT EXISTS income_allocations (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id TEXT NOT NULL DEFAULT '',
+      income_item_name TEXT NOT NULL,
+      target_category_type TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
   `);
 
   await client.exec(`

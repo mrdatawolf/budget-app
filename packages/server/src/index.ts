@@ -16,6 +16,7 @@ import tellerRoutes from './routes/teller';
 import csvRoutes from './routes/csv';
 import onboardingRoutes from './routes/onboarding';
 import authRoutes from './routes/auth';
+import incomeAllocationRoutes from './routes/income-allocations';
 
 const app = new Hono<AppEnv>();
 
@@ -57,6 +58,7 @@ app.route('/api/teller', tellerRoutes);
 app.route('/api/csv', csvRoutes);
 app.route('/api/onboarding', onboardingRoutes);
 app.route('/api/auth/claim-data', authRoutes);
+app.route('/api/income-allocations', incomeAllocationRoutes);
 
 // Start the server
 const port = parseInt(process.env.API_PORT || '3001', 10);

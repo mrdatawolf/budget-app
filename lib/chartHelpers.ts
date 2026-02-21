@@ -1,6 +1,7 @@
 import { Budget } from '@/types/budget';
 import { CategoryChartData, MonthlyTrendData, FlowData, FlowNode, FlowLink } from '@/types/chart';
 import { getCategoryColor, getCategoryEmoji } from './chartColors';
+import { IncomeAllocation } from './api-client';
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -84,8 +85,10 @@ export function transformBudgetsToDiscretionaryTrendData(budgets: Budget[]): Mon
 
 /**
  * Transform a budget into 3-column flow diagram data (Sankey)
+ * When allocations are provided, linked income flows directly to its target category.
+ * Surplus from linked income joins the general pool; deficit is filled from it.
  */
-export function transformBudgetToFlowData(budget: Budget | null): FlowData {
+export function transformBudgetToFlowData(budget: Budget | null, allocations: IncomeAllocation[] = []): FlowData {
   if (!budget) {
     return { nodes: [], links: [] };
   }
@@ -93,38 +96,31 @@ export function transformBudgetToFlowData(budget: Budget | null): FlowData {
   const nodes: FlowNode[] = [];
   const links: FlowLink[] = [];
 
-  // --- Column 1: Income Sources ---
+  // --- Gather income items and buffer ---
   const bufferAmount = budget.buffer || 0;
   const incomeCategory = budget.categories.income;
   const incomeItems = incomeCategory ? incomeCategory.items.filter((item) => item.actual > 0) : [];
-  const totalIncome = incomeItems.reduce((sum, item) => sum + item.actual, 0);
 
-  if (bufferAmount > 0) {
-    nodes.push({
-      id: 'source-buffer',
-      label: '💼 Buffer',
-      color: '#6b7280',
-      column: 'source',
-      lineItems: [{ name: 'Carried over', amount: bufferAmount }],
-    });
-  }
+  // --- Build allocation map: incomeItemName → targetCategoryType ---
+  const allocationMap = new Map<string, string>();
+  allocations.forEach(a => allocationMap.set(a.incomeItemName, a.targetCategoryType));
 
-  if (totalIncome > 0) {
-    nodes.push({
-      id: 'source-income',
-      label: '💰 Income',
-      color: getCategoryColor('income'),
-      column: 'source',
-      lineItems: incomeItems.map((item) => ({ name: item.name, amount: item.actual })),
-    });
-  }
+  // --- Separate linked vs unlinked income ---
+  const linkedIncome: { name: string; actual: number; targetCategory: string }[] = [];
+  const unlinkedIncome: { name: string; actual: number }[] = [];
 
-  const totalSources = bufferAmount + totalIncome;
-  if (totalSources === 0) {
-    return { nodes: [], links: [] };
-  }
+  incomeItems.forEach(item => {
+    const target = allocationMap.get(item.name);
+    if (target) {
+      linkedIncome.push({ name: item.name, actual: item.actual, targetCategory: target });
+    } else {
+      unlinkedIncome.push({ name: item.name, actual: item.actual });
+    }
+  });
 
-  // --- Column 2: Expense Categories ---
+  const totalUnlinkedIncome = unlinkedIncome.reduce((sum, item) => sum + item.actual, 0);
+
+  // --- Column 2: Expense Categories (build early so we know spending) ---
   const expenseKeys = getExpenseCategoryKeys(budget);
 
   const categoriesWithSpending = expenseKeys
@@ -140,6 +136,80 @@ export function transformBudgetToFlowData(budget: Budget | null): FlowData {
     return { nodes: [], links: [] };
   }
 
+  // --- Calculate linked income direct flows and surpluses ---
+  // Track how much of each category's spending is already covered by linked income
+  const categoryLinkedCoverage = new Map<string, number>();
+  let totalSurplus = 0;
+
+  linkedIncome.forEach(({ name, actual, targetCategory }) => {
+    const catData = categoriesWithSpending.find(c => c.key === targetCategory);
+    const catSpending = catData ? catData.total : 0;
+    const directFlow = Math.min(actual, catSpending);
+    const surplus = Math.max(0, actual - catSpending);
+
+    if (directFlow > 0) {
+      categoryLinkedCoverage.set(
+        targetCategory,
+        (categoryLinkedCoverage.get(targetCategory) || 0) + directFlow
+      );
+    }
+
+    totalSurplus += surplus;
+  });
+
+  // --- General pool = buffer + unlinked income + linked surpluses ---
+  const generalPool = bufferAmount + totalUnlinkedIncome + totalSurplus;
+  const totalSources = bufferAmount + incomeItems.reduce((sum, item) => sum + item.actual, 0);
+  if (totalSources === 0) {
+    return { nodes: [], links: [] };
+  }
+
+  // --- Column 1: Source Nodes ---
+  // One node per linked income item
+  linkedIncome.forEach(({ name, actual, targetCategory }) => {
+    const catData = categoriesWithSpending.find(c => c.key === targetCategory);
+    const catSpending = catData ? catData.total : 0;
+    const directFlow = Math.min(actual, catSpending);
+    const surplus = Math.max(0, actual - catSpending);
+
+    // Only create node if this income has actual spending
+    if (directFlow > 0 || surplus > 0) {
+      nodes.push({
+        id: `source-linked-${name.toLowerCase().replace(/\s+/g, '-')}`,
+        label: `💰 ${name}`,
+        color: getCategoryColor('income'),
+        column: 'source',
+        lineItems: [
+          { name: `Direct → ${catData?.category.name || targetCategory}`, amount: directFlow },
+          ...(surplus > 0.01 ? [{ name: 'Surplus → General Pool', amount: surplus }] : []),
+        ],
+      });
+    }
+  });
+
+  // Buffer node
+  if (bufferAmount > 0) {
+    nodes.push({
+      id: 'source-buffer',
+      label: '💼 Buffer',
+      color: '#6b7280',
+      column: 'source',
+      lineItems: [{ name: 'Carried over', amount: bufferAmount }],
+    });
+  }
+
+  // Unlinked income + surplus pool (combined as "Other Income" if any exists)
+  if (totalUnlinkedIncome > 0.01) {
+    nodes.push({
+      id: 'source-income',
+      label: unlinkedIncome.length === incomeItems.length ? '💰 Income' : '💰 Other Income',
+      color: getCategoryColor('income'),
+      column: 'source',
+      lineItems: unlinkedIncome.map((item) => ({ name: item.name, amount: item.actual })),
+    });
+  }
+
+  // --- Category Nodes (Column 2) ---
   categoriesWithSpending.forEach(({ key, category, items }) => {
     nodes.push({
       id: `category-${key}`,
@@ -150,7 +220,7 @@ export function transformBudgetToFlowData(budget: Budget | null): FlowData {
     });
   });
 
-  // --- Column 3: Budget Items ---
+  // --- Budget Item Nodes (Column 3) ---
   categoriesWithSpending.forEach(({ key, items }) => {
     items.forEach((item) => {
       nodes.push({
@@ -162,27 +232,71 @@ export function transformBudgetToFlowData(budget: Budget | null): FlowData {
     });
   });
 
-  // --- Links: Sources → Categories ---
-  const totalExpenses = categoriesWithSpending.reduce((sum, c) => sum + c.total, 0);
-  const sourceNodes = nodes.filter((n) => n.column === 'source');
+  // --- Links: Linked Income → Target Categories (direct) ---
+  linkedIncome.forEach(({ name, actual, targetCategory }) => {
+    const catData = categoriesWithSpending.find(c => c.key === targetCategory);
+    if (!catData) return;
+    const directFlow = Math.min(actual, catData.total);
+    if (directFlow > 0.01) {
+      links.push({
+        source: `source-linked-${name.toLowerCase().replace(/\s+/g, '-')}`,
+        target: `category-${targetCategory}`,
+        value: directFlow,
+        color: getCategoryColor(targetCategory),
+      });
+    }
+  });
 
-  sourceNodes.forEach((sourceNode) => {
-    const sourceAmount = sourceNode.id === 'source-buffer' ? bufferAmount : totalIncome;
+  // --- Links: General pool sources → Remaining category needs ---
+  // Categories that still need funding (not fully covered by linked income)
+  const remainingNeeds = categoriesWithSpending
+    .map(c => ({
+      ...c,
+      remaining: c.total - (categoryLinkedCoverage.get(c.key) || 0),
+    }))
+    .filter(c => c.remaining > 0.01);
 
-    categoriesWithSpending.forEach(({ key, total }) => {
-      const proportion = total / totalExpenses;
-      const flowAmount = Math.min(sourceAmount * proportion, total);
+  const totalRemainingNeeds = remainingNeeds.reduce((sum, c) => sum + c.remaining, 0);
 
-      if (flowAmount > 0.01) {
-        links.push({
-          source: sourceNode.id,
-          target: `category-${key}`,
-          value: flowAmount,
-          color: getCategoryColor(key),
+  if (totalRemainingNeeds > 0.01 && generalPool > 0.01) {
+    // Distribute general pool (buffer + unlinked income + surpluses) proportionally
+    const generalPoolSources: { id: string; amount: number }[] = [];
+
+    if (bufferAmount > 0.01) {
+      generalPoolSources.push({ id: 'source-buffer', amount: bufferAmount });
+    }
+    if (totalUnlinkedIncome > 0.01) {
+      generalPoolSources.push({ id: 'source-income', amount: totalUnlinkedIncome });
+    }
+    // Surpluses from linked income also flow to general pool categories
+    linkedIncome.forEach(({ name, actual, targetCategory }) => {
+      const catData = categoriesWithSpending.find(c => c.key === targetCategory);
+      const catSpending = catData ? catData.total : 0;
+      const surplus = Math.max(0, actual - catSpending);
+      if (surplus > 0.01) {
+        generalPoolSources.push({
+          id: `source-linked-${name.toLowerCase().replace(/\s+/g, '-')}`,
+          amount: surplus,
         });
       }
     });
-  });
+
+    generalPoolSources.forEach(({ id: sourceId, amount: sourceAmount }) => {
+      remainingNeeds.forEach(({ key, remaining }) => {
+        const proportion = remaining / totalRemainingNeeds;
+        const flowAmount = Math.min(sourceAmount * proportion, remaining);
+
+        if (flowAmount > 0.01) {
+          links.push({
+            source: sourceId,
+            target: `category-${key}`,
+            value: flowAmount,
+            color: getCategoryColor(key),
+          });
+        }
+      });
+    });
+  }
 
   // --- Links: Categories → Items ---
   categoriesWithSpending.forEach(({ key, items }) => {
@@ -204,7 +318,7 @@ export function transformBudgetToFlowData(budget: Budget | null): FlowData {
  * Excludes budget items linked to recurring payments (bills)
  * Source amounts are reduced by recurring spending to show only discretionary pool
  */
-export function transformBudgetToDiscretionaryFlowData(budget: Budget | null): FlowData {
+export function transformBudgetToDiscretionaryFlowData(budget: Budget | null, allocations: IncomeAllocation[] = []): FlowData {
   if (!budget) {
     return { nodes: [], links: [] };
   }

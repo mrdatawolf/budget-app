@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import ServerStep from '@/components/onboarding/ServerStep';
 import WelcomeStep from '@/components/onboarding/WelcomeStep';
-import { api, ApiError } from '@/lib/api-client';
+import { api, ApiError, isServerConfigured } from '@/lib/api-client';
 import ConceptsStep from '@/components/onboarding/ConceptsStep';
 import BufferStep from '@/components/onboarding/BufferStep';
 import ItemsStep from '@/components/onboarding/ItemsStep';
@@ -23,7 +24,7 @@ interface CreatedItem {
   planned: number;
 }
 
-const TOTAL_STEPS = 6;
+const TOTAL_STEPS = 7;
 
 const emojiMap: Record<string, string> = {
   'income': '💰',
@@ -87,14 +88,26 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     async function init() {
-      // Check onboarding status
+      // Step 1 (ServerStep) is purely client-side — check if configured
+      if (!isServerConfigured()) {
+        setCurrentStep(1);
+        setLoading(false);
+        return;
+      }
+
+      // Server is configured — proceed with API-dependent init
+      // DB stores steps 1-6 (old numbering); we display as 2-7 (shifted +1 for ServerStep)
       const status = await api.onboarding.getStatus();
 
       if (status?.completed) {
-        // Already completed — allow revisit but start at step 1
-        setCurrentStep(1);
+        // Already completed — allow revisit, start at Welcome (step 2)
+        setCurrentStep(2);
       } else if (status?.currentStep && status.currentStep > 1) {
-        setCurrentStep(status.currentStep);
+        // Resume: DB step N maps to display step N+1
+        setCurrentStep(status.currentStep + 1);
+      } else {
+        // Fresh start (server configured but onboarding not started) — go to Welcome
+        setCurrentStep(2);
       }
 
       // Initialize or create onboarding record
@@ -144,7 +157,7 @@ export default function OnboardingPage() {
           <span className="text-sm text-text-tertiary">
             Step {currentStep} of {TOTAL_STEPS}
           </span>
-          {currentStep < TOTAL_STEPS && (
+          {currentStep > 1 && currentStep < TOTAL_STEPS && (
             <button
               onClick={handleSkip}
               className="text-sm text-text-tertiary hover:text-text-secondary transition-colors"
@@ -175,48 +188,56 @@ export default function OnboardingPage() {
       <div className="flex-1 overflow-y-auto px-6 py-8">
         <div className="w-full max-w-2xl mx-auto">
           {currentStep === 1 && (
+            <ServerStep
+              onNext={() => {
+                // After server config, reload to re-init with API
+                window.location.reload();
+              }}
+            />
+          )}
+          {currentStep === 2 && (
             <WelcomeStep
-              onNext={() => setCurrentStep(2)}
+              onNext={() => setCurrentStep(3)}
               onLoadDemo={handleLoadDemo}
               demoLoading={demoLoading}
             />
           )}
-          {currentStep === 2 && (
-            <ConceptsStep
-              onNext={() => setCurrentStep(3)}
-              onBack={() => setCurrentStep(1)}
-            />
-          )}
           {currentStep === 3 && (
-            <BufferStep
-              budgetId={budgetId}
-              onNext={() => {
-                setBufferAmount(bufferAmount);
-                setCurrentStep(4);
-              }}
+            <ConceptsStep
+              onNext={() => setCurrentStep(4)}
               onBack={() => setCurrentStep(2)}
             />
           )}
           {currentStep === 4 && (
-            <ItemsStep
-              categories={categories}
-              createdItems={createdItems}
-              setCreatedItems={setCreatedItems}
-              onNext={() => setCurrentStep(5)}
+            <BufferStep
+              budgetId={budgetId}
+              onNext={() => {
+                setBufferAmount(bufferAmount);
+                setCurrentStep(5);
+              }}
               onBack={() => setCurrentStep(3)}
             />
           )}
           {currentStep === 5 && (
-            <TransactionStep
+            <ItemsStep
+              categories={categories}
               createdItems={createdItems}
-              onNext={() => {
-                setAddedTransaction(true);
-                setCurrentStep(6);
-              }}
+              setCreatedItems={setCreatedItems}
+              onNext={() => setCurrentStep(6)}
               onBack={() => setCurrentStep(4)}
             />
           )}
           {currentStep === 6 && (
+            <TransactionStep
+              createdItems={createdItems}
+              onNext={() => {
+                setAddedTransaction(true);
+                setCurrentStep(7);
+              }}
+              onBack={() => setCurrentStep(5)}
+            />
+          )}
+          {currentStep === 7 && (
             <CompleteStep
               buffer={bufferAmount}
               createdItems={createdItems}

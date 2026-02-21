@@ -6,12 +6,14 @@ import { sankey, sankeyLinkHorizontal, SankeyNode, SankeyLink } from 'd3-sankey'
 import { Budget } from '@/types/budget';
 import { transformBudgetToFlowData, transformBudgetToDiscretionaryFlowData, hasIncomeAndExpenses, hasDiscretionarySpending } from '@/lib/chartHelpers';
 import { formatCurrency } from '@/lib/formatCurrency';
+import { IncomeAllocation } from '@/lib/api-client';
 import ChartTooltip from './ChartTooltip';
 import ChartEmptyState from './ChartEmptyState';
 import { FaChartPie } from 'react-icons/fa';
 
 interface FlowDiagramProps {
   budget: Budget | null;
+  allocations?: IncomeAllocation[];
 }
 
 interface ExtendedSankeyNode extends SankeyNode<{}, {}> {
@@ -27,7 +29,7 @@ interface ExtendedSankeyLink extends SankeyLink<ExtendedSankeyNode, {}> {
   value: number;
 }
 
-export default function FlowDiagram({ budget }: FlowDiagramProps) {
+export default function FlowDiagram({ budget, allocations = [] }: FlowDiagramProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState({
@@ -38,8 +40,8 @@ export default function FlowDiagram({ budget }: FlowDiagramProps) {
   });
   const [discretionaryMode, setDiscretionaryMode] = useState(false);
 
-  const allFlowData = useMemo(() => transformBudgetToFlowData(budget), [budget]);
-  const discretionaryFlowData = useMemo(() => transformBudgetToDiscretionaryFlowData(budget), [budget]);
+  const allFlowData = useMemo(() => transformBudgetToFlowData(budget, allocations), [budget, allocations]);
+  const discretionaryFlowData = useMemo(() => transformBudgetToDiscretionaryFlowData(budget, allocations), [budget, allocations]);
   const flowData = discretionaryMode ? discretionaryFlowData : allFlowData;
   const hasData = hasIncomeAndExpenses(budget);
   const hasDiscretionary = hasDiscretionarySpending(budget);

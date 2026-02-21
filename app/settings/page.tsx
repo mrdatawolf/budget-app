@@ -2,14 +2,16 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Script from 'next/script';
-import { FaUniversity, FaTrash, FaSync, FaFileUpload, FaUpload } from 'react-icons/fa';
+import { FaUniversity, FaTrash, FaSync, FaFileUpload, FaUpload, FaLink, FaPlus, FaServer, FaDesktop, FaGlobe, FaPen, FaCheck, FaSpinner } from 'react-icons/fa';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useToast } from '@/contexts/ToastContext';
 import { formatTimestamp } from '@/lib/dateHelpers';
 import CsvImportModal from '@/components/csv/CsvImportModal';
 import DatabaseManagement from '@/components/DatabaseManagement';
 import { CsvAccount } from '@/types/csv';
-import { api } from '@/lib/api-client';
+import { api, IncomeAllocation, getServerUrl, setServerUrl } from '@/lib/api-client';
+import { Budget } from '@/types/budget';
+import { transformDbBudgetToAppBudget } from '@/lib/budgetHelpers';
 
 interface LinkedAccount {
   id: string;
@@ -50,6 +52,22 @@ export default function SettingsPage() {
   const [csvAccounts, setCsvAccounts] = useState<CsvAccount[]>([]);
   const [showCsvModal, setShowCsvModal] = useState(false);
 
+  // Server configuration state
+  const [editingServer, setEditingServer] = useState(false);
+  const [serverMode, setServerMode] = useState<'local' | 'remote'>(() => {
+    const url = getServerUrl();
+    return url ? 'remote' : 'local';
+  });
+  const [serverUrlInput, setServerUrlInput] = useState(() => getServerUrl());
+  const [serverTesting, setServerTesting] = useState(false);
+  const [serverTestResult, setServerTestResult] = useState<'success' | 'error' | null>(null);
+
+  // Income allocation state
+  const [allocations, setAllocations] = useState<IncomeAllocation[]>([]);
+  const [currentBudget, setCurrentBudget] = useState<Budget | null>(null);
+  const [newAllocationIncome, setNewAllocationIncome] = useState('');
+  const [newAllocationCategory, setNewAllocationCategory] = useState('');
+
   const fetchAccounts = useCallback(async () => {
     try {
       const data = await api.teller.listAccounts();
@@ -70,10 +88,33 @@ export default function SettingsPage() {
     }
   }, []);
 
+  const fetchAllocations = useCallback(async () => {
+    try {
+      const data = await api.incomeAllocation.list();
+      setAllocations(data);
+    } catch (error) {
+      console.error('Error fetching income allocations:', error);
+    }
+  }, []);
+
+  const fetchCurrentBudget = useCallback(async () => {
+    try {
+      const now = new Date();
+      const data = await api.budget.get(now.getMonth(), now.getFullYear());
+      if (data) {
+        setCurrentBudget(transformDbBudgetToAppBudget(data));
+      }
+    } catch (error) {
+      console.error('Error fetching current budget:', error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchAccounts();
     fetchCsvAccounts();
-  }, [fetchAccounts, fetchCsvAccounts]);
+    fetchAllocations();
+    fetchCurrentBudget();
+  }, [fetchAccounts, fetchCsvAccounts, fetchAllocations, fetchCurrentBudget]);
 
   const handleConnectBank = () => {
     if (!tellerReady || !window.TellerConnect) {
@@ -153,6 +194,46 @@ export default function SettingsPage() {
     }
   };
 
+  const handleCreateAllocation = async () => {
+    if (!newAllocationIncome || !newAllocationCategory) return;
+    try {
+      await api.incomeAllocation.create({
+        incomeItemName: newAllocationIncome,
+        targetCategoryType: newAllocationCategory,
+      });
+      setNewAllocationIncome('');
+      setNewAllocationCategory('');
+      fetchAllocations();
+      toast.success('Income allocation created');
+    } catch (error) {
+      console.error('Error creating allocation:', error);
+      toast.error('Failed to create allocation');
+    }
+  };
+
+  const handleDeleteAllocation = async (id: string) => {
+    try {
+      await api.incomeAllocation.delete(id);
+      setAllocations(allocations.filter(a => a.id !== id));
+      toast.success('Allocation removed');
+    } catch (error) {
+      console.error('Error deleting allocation:', error);
+      toast.error('Failed to remove allocation');
+    }
+  };
+
+  // Derive income items and expense categories from current budget
+  const incomeItems = currentBudget?.categories?.income?.items?.map(i => i.name) || [];
+  const expenseCategories = currentBudget
+    ? Object.entries(currentBudget.categories)
+        .filter(([key]) => key !== 'income')
+        .map(([key, cat]) => ({ key, name: cat.name, emoji: cat.emoji }))
+    : [];
+  // Income items that don't already have an allocation
+  const availableIncomeItems = incomeItems.filter(
+    name => !allocations.some(a => a.incomeItemName === name)
+  );
+
   const formatDate = formatTimestamp;
 
   return (
@@ -164,7 +245,131 @@ export default function SettingsPage() {
 
       <div className="h-full overflow-y-auto bg-surface-secondary p-4 lg:p-8">
         <div className="max-w-4xl mx-auto">
-          <h1 className="text-3xl font-bold text-text-primary mb-8">Accounts</h1>
+          <h1 className="text-3xl font-bold text-text-primary mb-8">Settings</h1>
+
+          {/* Server Configuration Section */}
+          <div className="bg-surface rounded-lg shadow p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <FaServer className="text-text-tertiary" />
+                <div>
+                  <h2 className="text-xl font-semibold text-text-primary">Server</h2>
+                  <p className="text-sm text-text-secondary mt-0.5">
+                    {getServerUrl()
+                      ? `Connected to ${getServerUrl()}`
+                      : 'Running on this machine'}
+                  </p>
+                </div>
+              </div>
+              {!editingServer && (
+                <button
+                  onClick={() => setEditingServer(true)}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surface-secondary rounded-lg transition-colors"
+                >
+                  <FaPen className="text-xs" />
+                  Change
+                </button>
+              )}
+            </div>
+
+            {editingServer && (
+              <div className="border-t border-border pt-4">
+                <div className="flex gap-3 mb-4">
+                  <button
+                    onClick={() => { setServerMode('local'); setServerTestResult(null); }}
+                    className={`flex-1 p-4 rounded-lg border-2 transition-all text-left ${
+                      serverMode === 'local'
+                        ? 'border-primary bg-primary-light'
+                        : 'border-border hover:border-border-strong'
+                    }`}
+                  >
+                    <FaDesktop className={`text-lg mb-2 ${serverMode === 'local' ? 'text-primary' : 'text-text-tertiary'}`} />
+                    <div className="font-medium text-text-primary text-sm">This machine</div>
+                  </button>
+                  <button
+                    onClick={() => { setServerMode('remote'); setServerTestResult(null); }}
+                    className={`flex-1 p-4 rounded-lg border-2 transition-all text-left ${
+                      serverMode === 'remote'
+                        ? 'border-primary bg-primary-light'
+                        : 'border-border hover:border-border-strong'
+                    }`}
+                  >
+                    <FaGlobe className={`text-lg mb-2 ${serverMode === 'remote' ? 'text-primary' : 'text-text-tertiary'}`} />
+                    <div className="font-medium text-text-primary text-sm">Remote server</div>
+                  </button>
+                </div>
+
+                {serverMode === 'remote' && (
+                  <div className="mb-4">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={serverUrlInput}
+                        onChange={(e) => { setServerUrlInput(e.target.value); setServerTestResult(null); }}
+                        placeholder="http://192.168.1.100:3401"
+                        className="flex-1 px-3 py-2 border border-border rounded-lg bg-surface text-text-primary placeholder-text-tertiary text-sm"
+                      />
+                      <button
+                        onClick={async () => {
+                          if (!serverUrlInput.trim()) return;
+                          setServerTesting(true);
+                          setServerTestResult(null);
+                          try {
+                            const url = serverUrlInput.replace(/\/+$/, '');
+                            const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(5000) });
+                            setServerTestResult(res.ok ? 'success' : 'error');
+                          } catch {
+                            setServerTestResult('error');
+                          } finally {
+                            setServerTesting(false);
+                          }
+                        }}
+                        disabled={!serverUrlInput.trim() || serverTesting}
+                        className="px-3 py-2 border border-border rounded-lg text-text-secondary hover:bg-surface-secondary text-sm disabled:opacity-50"
+                      >
+                        {serverTesting ? <FaSpinner className="animate-spin" /> : 'Test'}
+                      </button>
+                    </div>
+                    {serverTestResult === 'success' && (
+                      <div className="flex items-center gap-2 mt-2 text-success text-sm">
+                        <FaCheck /> Connection successful
+                      </div>
+                    )}
+                    {serverTestResult === 'error' && (
+                      <div className="mt-2 text-danger text-sm">
+                        Could not reach the server. Check the URL and make sure it&apos;s running.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      const url = serverMode === 'local' ? '' : serverUrlInput.replace(/\/+$/, '');
+                      setServerUrl(url);
+                      window.location.reload();
+                    }}
+                    disabled={serverMode === 'remote' && !serverUrlInput.trim()}
+                    className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover text-sm disabled:opacity-50"
+                  >
+                    Save & Reload
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditingServer(false);
+                      setServerMode(getServerUrl() ? 'remote' : 'local');
+                      setServerUrlInput(getServerUrl());
+                      setServerTestResult(null);
+                    }}
+                    className="px-4 py-2 text-text-secondary hover:bg-surface-secondary rounded-lg text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Bank Connections Section */}
           <div className="bg-surface rounded-lg shadow p-6 mb-6">
@@ -357,6 +562,96 @@ export default function SettingsPage() {
               <li>Imported transactions appear as &quot;Uncategorized&quot; on the main budget page</li>
               <li>Assign transactions to budget categories to track your spending</li>
             </ol>
+          </div>
+
+          {/* Income Allocation Section */}
+          <div className="bg-surface rounded-lg shadow p-6 mb-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-xl font-semibold text-text-primary">
+                  Income Allocation
+                </h2>
+                <p className="text-sm text-text-secondary mt-1">
+                  Link income sources to expense categories for the Cash Flow diagram
+                </p>
+              </div>
+            </div>
+
+            {/* Existing allocations */}
+            {allocations.length > 0 && (
+              <div className="space-y-2 mb-4">
+                {allocations.map(allocation => {
+                  const category = expenseCategories.find(c => c.key === allocation.targetCategoryType);
+                  return (
+                    <div key={allocation.id} className="flex items-center justify-between px-4 py-3 bg-surface-secondary rounded-lg border">
+                      <div className="flex items-center gap-3">
+                        <span className="font-medium text-text-primary">{allocation.incomeItemName}</span>
+                        <FaLink className="text-text-tertiary text-xs" />
+                        <span className="text-text-primary">
+                          {category ? `${category.emoji || ''} ${category.name}`.trim() : allocation.targetCategoryType}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteAllocation(allocation.id)}
+                        className="p-2 text-danger hover:bg-danger-light rounded"
+                        title="Remove allocation"
+                      >
+                        <FaTrash />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Add new allocation */}
+            {availableIncomeItems.length > 0 && expenseCategories.length > 0 ? (
+              <div className="flex items-center gap-3">
+                <select
+                  value={newAllocationIncome}
+                  onChange={(e) => setNewAllocationIncome(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-border rounded-lg bg-surface text-text-primary"
+                >
+                  <option value="">Select income source...</option>
+                  {availableIncomeItems.map(name => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+                <FaLink className="text-text-tertiary" />
+                <select
+                  value={newAllocationCategory}
+                  onChange={(e) => setNewAllocationCategory(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-border rounded-lg bg-surface text-text-primary"
+                >
+                  <option value="">Select expense category...</option>
+                  {expenseCategories.map(cat => (
+                    <option key={cat.key} value={cat.key}>
+                      {cat.emoji || ''} {cat.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleCreateAllocation}
+                  disabled={!newAllocationIncome || !newAllocationCategory}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover disabled:opacity-50"
+                >
+                  <FaPlus />
+                  Add
+                </button>
+              </div>
+            ) : allocations.length === 0 ? (
+              <div className="text-center py-8 text-text-secondary">
+                <FaLink className="mx-auto text-4xl mb-3 text-text-tertiary" />
+                <p>No income items found in the current budget.</p>
+                <p className="text-sm mt-1">
+                  Add income items to your budget first, then link them to expense categories here.
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-text-secondary">
+                All income items have been allocated.
+              </p>
+            )}
           </div>
 
           {/* Database Management */}

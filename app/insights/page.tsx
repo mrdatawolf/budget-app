@@ -10,7 +10,7 @@ import SpendingTrendsChart from '@/components/charts/SpendingTrendsChart';
 import FlowDiagram from '@/components/charts/FlowDiagram';
 import { Budget } from '@/types/budget';
 import { transformDbBudgetToAppBudget } from '@/lib/budgetHelpers';
-import { api } from '@/lib/api-client';
+import { api, IncomeAllocation } from '@/lib/api-client';
 
 export default function InsightsPageWrapper() {
   return (
@@ -25,6 +25,7 @@ function InsightsPage() {
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [currentBudget, setCurrentBudget] = useState<Budget | null>(null);
+  const [allocations, setAllocations] = useState<IncomeAllocation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const selectedMonth = searchParams.get('month') !== null ? parseInt(searchParams.get('month')!) : new Date().getMonth();
@@ -59,9 +60,19 @@ function InsightsPage() {
     setIsLoading(false);
   }, [selectedMonth, selectedYear]);
 
+  const fetchAllocations = useCallback(async () => {
+    try {
+      const data = await api.incomeAllocation.list();
+      setAllocations(data);
+    } catch (error) {
+      console.error('Error fetching income allocations:', error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchMultiMonthBudgets();
-  }, [fetchMultiMonthBudgets]);
+    fetchAllocations();
+  }, [fetchMultiMonthBudgets, fetchAllocations]);
 
   return (
     <DashboardLayout>
@@ -149,7 +160,7 @@ function InsightsPage() {
                   </div>
                 </div>
                 <div className="h-[500px]">
-                  <FlowDiagram budget={currentBudget} />
+                  <FlowDiagram budget={currentBudget} allocations={allocations} />
                 </div>
               </div>
             </div>

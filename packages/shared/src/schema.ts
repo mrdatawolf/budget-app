@@ -165,6 +165,17 @@ export const userOnboarding = pgTable('user_onboarding', {
 
 export const userOnboardingRelations = relations(userOnboarding, () => ({}));
 
+// Income allocations - links income items to expense categories for cash flow visualization
+export const incomeAllocations = pgTable('income_allocations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').notNull().default(''),
+  incomeItemName: text('income_item_name').notNull(),
+  targetCategoryType: text('target_category_type').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).$defaultFn(() => new Date()),
+});
+
+export const incomeAllocationsRelations = relations(incomeAllocations, () => ({}));
+
 // Recurring payments for subscriptions and memberships
 export const recurringPayments = pgTable('recurring_payments', {
   id: uuid('id').primaryKey().defaultRandom(),
