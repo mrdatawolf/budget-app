@@ -121,6 +121,12 @@ route.post('/setup-schema', async (c) => {
         last_synced_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         csv_column_mapping TEXT,
+        current_balance NUMERIC(10, 2),
+        available_balance NUMERIC(10, 2),
+        credit_limit NUMERIC(10, 2),
+        minimum_payment NUMERIC(10, 2),
+        payment_due_date TEXT,
+        balance_updated_at TIMESTAMPTZ,
         updated_at TIMESTAMPTZ DEFAULT NOW(),
         deleted_at TIMESTAMPTZ
       );
@@ -168,6 +174,8 @@ route.post('/setup-schema', async (c) => {
         teller_transaction_id TEXT UNIQUE,
         teller_account_id TEXT,
         status TEXT,
+        is_transfer BOOLEAN NOT NULL DEFAULT false,
+        transfer_pair_id UUID,
         deleted_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -217,6 +225,22 @@ route.post('/setup-schema', async (c) => {
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
     `);
+
+    // Add columns that may be missing on older cloud databases
+    const alterCommands = [
+      // Credit card / transfer fields
+      'ALTER TABLE linked_accounts ADD COLUMN IF NOT EXISTS current_balance NUMERIC(10, 2)',
+      'ALTER TABLE linked_accounts ADD COLUMN IF NOT EXISTS available_balance NUMERIC(10, 2)',
+      'ALTER TABLE linked_accounts ADD COLUMN IF NOT EXISTS credit_limit NUMERIC(10, 2)',
+      'ALTER TABLE linked_accounts ADD COLUMN IF NOT EXISTS minimum_payment NUMERIC(10, 2)',
+      'ALTER TABLE linked_accounts ADD COLUMN IF NOT EXISTS payment_due_date TEXT',
+      'ALTER TABLE linked_accounts ADD COLUMN IF NOT EXISTS balance_updated_at TIMESTAMPTZ',
+      'ALTER TABLE transactions ADD COLUMN IF NOT EXISTS is_transfer BOOLEAN NOT NULL DEFAULT false',
+      'ALTER TABLE transactions ADD COLUMN IF NOT EXISTS transfer_pair_id UUID',
+    ];
+    for (const cmd of alterCommands) {
+      await sql.unsafe(cmd).catch(() => {});
+    }
 
     return c.json({ success: true, message: 'Schema created/verified on Supabase' });
   } catch (error) {

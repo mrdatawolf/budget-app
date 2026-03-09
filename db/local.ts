@@ -1,6 +1,7 @@
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as schema from './schema';
 
@@ -8,6 +9,34 @@ import * as schema from './schema';
 // - In Node.js (API routes): uses file system
 // - In browser (future static build): will use IndexedDB
 const DB_PATH = process.env.PGLITE_DB_LOCATION || './data/budget-local';
+
+/**
+ * Get the backup storage directory.
+ * In production, backups are stored outside the install directory so they
+ * survive application updates and uninstalls.
+ * In development, backups are stored next to the database for convenience.
+ */
+function getBackupDirectory(): string {
+  // Allow override via environment variable
+  if (process.env.PGLITE_BACKUP_LOCATION) {
+    return process.env.PGLITE_BACKUP_LOCATION;
+  }
+
+  // In production, use a safe location outside the install directory
+  if (process.env.NODE_ENV === 'production') {
+    if (process.platform === 'win32') {
+      const appData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+      return path.join(appData, 'BudgetApp', 'backups');
+    } else {
+      return path.join(os.homedir(), '.local', 'share', 'BudgetApp', 'backups');
+    }
+  }
+
+  // In development, store next to the database
+  return path.dirname(DB_PATH);
+}
+
+const BACKUP_DIR = getBackupDirectory();
 
 // Use global state in development to persist across HMR (Hot Module Reload)
 // This prevents multiple PGlite instances from being created and corrupting the database
@@ -185,7 +214,12 @@ export function createBackup(): string | null {
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const backupPath = `${DB_PATH}-backup-${timestamp}`;
+  const baseName = path.basename(DB_PATH);
+
+  // Ensure backup directory exists
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+
+  const backupPath = path.join(BACKUP_DIR, `${baseName}-backup-${timestamp}`);
 
   try {
     // Copy the database directory recursively
@@ -312,6 +346,13 @@ export function getDbInitError(): Error | null {
  */
 export function getDbPath(): string {
   return DB_PATH;
+}
+
+/**
+ * Get the backup storage directory path.
+ */
+export function getBackupLocation(): string {
+  return BACKUP_DIR;
 }
 
 /**
@@ -504,6 +545,7 @@ export function getDbStatus(): {
   hasError: boolean;
   errorMessage: string | null;
   dbPath: string;
+  backupDir: string;
 } {
   const error = getInitError();
   return {
@@ -511,6 +553,7 @@ export function getDbStatus(): {
     hasError: error !== null,
     errorMessage: error?.message || null,
     dbPath: DB_PATH,
+    backupDir: BACKUP_DIR,
   };
 }
 
@@ -518,23 +561,35 @@ export function getDbStatus(): {
  * List available database backups.
  */
 export function listBackups(): { path: string; timestamp: string }[] {
-  const dir = path.dirname(DB_PATH);
   const baseName = path.basename(DB_PATH);
-
-  if (!fs.existsSync(dir)) {
-    return [];
-  }
-
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
   const backups: { path: string; timestamp: string }[] = [];
 
-  for (const entry of entries) {
-    if (entry.isDirectory() && entry.name.startsWith(`${baseName}-backup-`)) {
-      const timestamp = entry.name.replace(`${baseName}-backup-`, '');
-      backups.push({
-        path: path.join(dir, entry.name),
-        timestamp,
-      });
+  // Check the primary backup location
+  if (fs.existsSync(BACKUP_DIR)) {
+    const entries = fs.readdirSync(BACKUP_DIR, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory() && entry.name.startsWith(`${baseName}-backup-`)) {
+        const timestamp = entry.name.replace(`${baseName}-backup-`, '');
+        backups.push({
+          path: path.join(BACKUP_DIR, entry.name),
+          timestamp,
+        });
+      }
+    }
+  }
+
+  // Also check the legacy location (next to database) for backward compatibility
+  const legacyDir = path.dirname(DB_PATH);
+  if (path.resolve(legacyDir) !== path.resolve(BACKUP_DIR) && fs.existsSync(legacyDir)) {
+    const entries = fs.readdirSync(legacyDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory() && entry.name.startsWith(`${baseName}-backup-`)) {
+        const timestamp = entry.name.replace(`${baseName}-backup-`, '');
+        backups.push({
+          path: path.join(legacyDir, entry.name),
+          timestamp,
+        });
+      }
     }
   }
 

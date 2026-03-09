@@ -118,9 +118,12 @@ begin
   if CurUninstallStep = usPostUninstall then
   begin
     // Ask user if they want to keep their data
-    if MsgBox('Do you want to keep your budget data?' + #13#10 + #13#10 + 'Click Yes to keep your data (you can use it if you reinstall).' + #13#10 + 'Click No to delete all data.', mbConfirmation, MB_YESNO) = IDNO then
+    if MsgBox('Do you want to keep your budget data?' + #13#10 + #13#10 + 'Click Yes to keep your data (you can use it if you reinstall).' + #13#10 + 'Click No to delete all data.' + #13#10 + #13#10 + 'Note: Database backups are also stored in:' + #13#10 + ExpandConstant('{localappdata}\BudgetApp\backups'), mbConfirmation, MB_YESNO) = IDNO then
     begin
       DelTree(ExpandConstant('{app}\data'), True, True, True);
+      // Also remove backups from user profile
+      DelTree(ExpandConstant('{localappdata}\BudgetApp\backups'), True, True, True);
+      RemoveDir(ExpandConstant('{localappdata}\BudgetApp'));
     end;
   end;
 end;
