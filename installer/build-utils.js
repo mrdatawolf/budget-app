@@ -399,8 +399,11 @@ function buildNsisInstaller(makensisPath, opts) {
 
   const uninstallRemove = (opts.dataDirs && opts.dataDirs.length > 0)
     ? `  ; Ask user about data preservation
-  MessageBox MB_YESNO "Do you want to keep your budget data?$\\r$\\n$\\r$\\nClick Yes to keep your data (you can use it if you reinstall).$\\r$\\nClick No to delete all data." IDYES SkipDataDelete
+  MessageBox MB_YESNO "Do you want to keep your budget data?$\\r$\\n$\\r$\\nClick Yes to keep your data (you can use it if you reinstall).$\\r$\\nClick No to delete all data.$\\r$\\n$\\r$\\nNote: Database backups are also stored in:$\\r$\\n$LOCALAPPDATA\\BudgetApp\\backups" IDYES SkipDataDelete
 ${dataDirChecks}
+  ; Also remove backups from user profile
+  RMDir /r "$LOCALAPPDATA\\BudgetApp\\backups"
+  RMDir "$LOCALAPPDATA\\BudgetApp"
   SkipDataDelete:`
     : '';
 
@@ -461,8 +464,33 @@ SectionEnd
 Section "Uninstall"
 ${uninstallRemove}
 
-  ; Remove all files
-  RMDir /r "$INSTDIR"
+  ; Remove application directories (preserves data directory if user chose to keep it)
+  RMDir /r "$INSTDIR\\api-server"
+  RMDir /r "$INSTDIR\\.next"
+  RMDir /r "$INSTDIR\\node_modules"
+  RMDir /r "$INSTDIR\\public"
+
+  ; Remove application files
+  Delete "$INSTDIR\\node.exe"
+  Delete "$INSTDIR\\Uninstall.exe"
+  Delete "$INSTDIR\\server.js"
+  Delete "$INSTDIR\\package.json"
+  Delete "$INSTDIR\\icon.ico"
+  Delete "$INSTDIR\\.env"
+  Delete "$INSTDIR\\.env.example"
+  Delete "$INSTDIR\\start.bat"
+  Delete "$INSTDIR\\start.js"
+  Delete "$INSTDIR\\start-production.js"
+  Delete "$INSTDIR\\start-server.bat"
+  Delete "$INSTDIR\\start-server.js"
+  Delete "$INSTDIR\\start-client.bat"
+  Delete "$INSTDIR\\start-client.js"
+  Delete "$INSTDIR\\stop.bat"
+  Delete "$INSTDIR\\stop-server.bat"
+  Delete "$INSTDIR\\stop-client.bat"
+
+  ; Remove install directory only if empty (preserves data dir if user chose to keep it)
+  RMDir "$INSTDIR"
 
   ; Remove shortcuts
   Delete "$SMPROGRAMS\\${opts.shortcutName}\\${opts.shortcutName}.lnk"
@@ -548,9 +576,14 @@ function main() {
   console.log('     Budget App API Server');
   console.log('========================================');
   console.log('');
+  var backupDir = process.env.LOCALAPPDATA
+    ? path.join(process.env.LOCALAPPDATA, 'BudgetApp', 'backups')
+    : path.join(APP_DIR, 'data');
+
   console.log('  API server:  http://localhost:' + apiPort);
   console.log('  Health:      http://localhost:' + apiPort + '/health');
   console.log('  Data:        ' + path.join(APP_DIR, 'data', 'budget-local'));
+  console.log('  Backups:     ' + backupDir);
   console.log('');
   console.log('  Press Ctrl+C to stop');
   console.log('');
@@ -844,9 +877,14 @@ async function main() {
   console.log('           Budget App');
   console.log('========================================');
   console.log('');
+  var backupDir = process.env.LOCALAPPDATA
+    ? path.join(process.env.LOCALAPPDATA, 'BudgetApp', 'backups')
+    : path.join(APP_DIR, 'data');
+
   console.log('  Web app:     http://localhost:' + webPort);
   console.log('  API server:  http://localhost:' + apiPort);
   console.log('  Data:        ' + path.join(APP_DIR, 'data', 'budget-local'));
+  console.log('  Backups:     ' + backupDir);
   console.log('');
   console.log('  Press Ctrl+C to stop');
   console.log('');

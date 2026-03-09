@@ -51,6 +51,34 @@ function getTableColumns(tableName: string): string[] {
   return columnMap[tableName] || [];
 }
 
+/**
+ * Default values for NOT NULL columns that may be missing from older cloud schemas.
+ * Used during pull to avoid "NULL violates NOT NULL constraint" errors when the
+ * remote record doesn't include a column that was added in a later schema version.
+ * Key format: "table_name.column_name"
+ */
+const NOT_NULL_DEFAULTS: Record<string, any> = {
+  'transactions.is_transfer': false,
+  'linked_accounts.account_source': 'teller',
+  'linked_accounts.user_id': '',
+  'recurring_payments.is_active': true,
+  'recurring_payments.funded_amount': '0',
+  'budgets.buffer': '0',
+  'budgets.user_id': '',
+  'budget_items.planned': '0',
+  'budget_items.order': 0,
+};
+
+/** Get the value for a column from a remote record, applying NOT NULL defaults when needed */
+function getRecordValue(tableName: string, col: string, record: Record<string, any>): any {
+  const value = record[col];
+  if (value !== undefined && value !== null) return value;
+  // If the value is null/undefined and we have a NOT NULL default, use it
+  const defaultValue = NOT_NULL_DEFAULTS[`${tableName}.${col}`];
+  if (defaultValue !== undefined) return defaultValue;
+  return value ?? null;
+}
+
 // ============================================================================
 // PUSH: Local -> Supabase
 // ============================================================================
@@ -546,7 +574,7 @@ async function upsertToLocal(
 
   for (let i = 0; i < columns.length; i++) {
     const col = columns[i];
-    values.push(record[col] ?? null);
+    values.push(getRecordValue(tableName, col, record));
     placeholders.push(`$${i + 1}`);
     if (col !== 'id') {
       updateParts.push(`${q(col)} = $${i + 1}`);
