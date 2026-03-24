@@ -24,7 +24,6 @@ import { formatCurrency } from "@/lib/formatCurrency";
 import { formatDateLocale } from "@/lib/dateHelpers";
 import { api } from "@/lib/api-client";
 
-
 interface BudgetSectionProps {
   category: BudgetCategory;
   categoryType: string;

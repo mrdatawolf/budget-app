@@ -1,5 +1,5 @@
 import { serve } from '@hono/node-server';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { readFileSync } from 'fs';
@@ -13,15 +13,12 @@ import { startSyncScheduler } from '@budget-app/shared/db/sync-scheduler';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 let SERVER_VERSION = 'unknown';
-try {
-  // Try multiple paths: works both in dev (src/) and bundled (dist/ or standalone)
-  for (const relPath of ['../package.json', './package.json', '../../package.json']) {
-    try {
-      SERVER_VERSION = JSON.parse(readFileSync(join(__dirname, relPath), 'utf-8')).version;
-      break;
-    } catch { /* try next path */ }
-  }
-} catch { /* version stays 'unknown' */ }
+for (const relPath of ['../package.json', './package.json', '../../package.json']) {
+  try {
+    SERVER_VERSION = JSON.parse(readFileSync(join(__dirname, relPath), 'utf-8')).version;
+    break;
+  } catch { /* try next path */ }
+}
 
 // Route imports
 import databaseRoutes from './routes/database';
@@ -58,7 +55,7 @@ app.use('*', cors({
 }));
 
 // Health check endpoint (no auth) — /health for direct access, /api/health for proxy
-const healthResponse = (c: any) => c.json({ status: 'ok', version: SERVER_VERSION, timestamp: new Date().toISOString() });
+const healthResponse = (c: Context) => c.json({ status: 'ok', version: SERVER_VERSION, timestamp: new Date().toISOString() });
 app.get('/health', healthResponse);
 app.get('/api/health', healthResponse);
 

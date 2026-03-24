@@ -130,7 +130,12 @@ route.put('/:id', async (c) => {
       return c.json({ error: 'Credit card account not found' }, 404);
     }
 
-    const updates: Record<string, any> = { updatedAt: new Date() };
+    const updates: {
+      updatedAt: Date;
+      creditLimit?: string;
+      minimumPayment?: string;
+      paymentDueDate?: string;
+    } = { updatedAt: new Date() };
 
     if (body.creditLimit !== undefined) {
       updates.creditLimit = String(body.creditLimit);

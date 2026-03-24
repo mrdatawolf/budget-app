@@ -9,10 +9,10 @@ import BudgetSummary from "@/components/BudgetSummary";
 import AddTransactionModal, { TransactionToEdit } from "@/components/AddTransactionModal";
 import MonthlyReportModal from "@/components/MonthlyReportModal";
 import DashboardLayout from "@/components/DashboardLayout";
-import { Budget, Transaction, BudgetItem, DEFAULT_CATEGORIES } from "@/types/budget";
+import { Budget, Transaction, BudgetItem, LinkedAccount, DEFAULT_CATEGORIES } from "@/types/budget";
 import { transformDbBudgetToAppBudget } from "@/lib/budgetHelpers";
 import { FaColumns, FaTimes, FaSearch } from "react-icons/fa";
-import { api } from "@/lib/api-client";
+import { api, fetchAllLinkedAccounts } from "@/lib/api-client";
 
 const EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
   { label: 'Finance', emojis: ['💰', '💵', '💳', '🏦', '💎', '🪙', '📈', '📉', '💸', '🧾', '🏧'] },
@@ -29,13 +29,6 @@ const EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
   { label: 'Nature', emojis: ['🌱', '🌻', '🌳', '🍂', '🌊', '☀️', '🌙', '⭐', '🔥', '❄️', '🌈'] },
 ];
 
-interface LinkedAccount {
-  id: string;
-  accountName: string;
-  institutionName: string;
-  lastFour: string;
-  accountSubtype: string;
-}
 
 interface SelectedBudgetItem {
   item: BudgetItem;
@@ -114,13 +107,7 @@ function Home() {
   };
 
   const fetchLinkedAccounts = useCallback(async () => {
-    const results = await Promise.allSettled([
-      api.teller.listAccounts(),
-      api.csv.listAccounts(),
-    ]);
-    const tellerAccounts = results[0].status === 'fulfilled' ? results[0].value : [];
-    const csvAccounts = results[1].status === 'fulfilled' ? results[1].value : [];
-    setLinkedAccounts([...tellerAccounts, ...csvAccounts] as LinkedAccount[]);
+    setLinkedAccounts(await fetchAllLinkedAccounts());
   }, []);
 
   useEffect(() => {

@@ -19,7 +19,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { useUncategorizedCount } from "@/contexts/UncategorizedCountContext";
 import { formatCurrency } from "@/lib/formatCurrency";
 import { formatDateShort, formatDateMonth, formatDateDay, toLocalDateString } from "@/lib/dateHelpers";
-import { api } from "@/lib/api-client";
+import { api, fetchAllLinkedAccounts } from "@/lib/api-client";
 
 interface SelectedBudgetItem {
   item: BudgetItem;
@@ -253,15 +253,8 @@ export default function BudgetSummary({
     }
   }, [budget.month, budget.year]);
 
-  // Fetch linked accounts (both Teller and CSV/demo)
   const fetchLinkedAccounts = useCallback(async () => {
-    const results = await Promise.allSettled([
-      api.teller.listAccounts(),
-      api.csv.listAccounts(),
-    ]);
-    const tellerAccounts = results[0].status === 'fulfilled' ? results[0].value : [];
-    const csvAccounts = results[1].status === 'fulfilled' ? results[1].value : [];
-    setLinkedAccounts([...tellerAccounts, ...csvAccounts] as LinkedAccount[]);
+    setLinkedAccounts(await fetchAllLinkedAccounts());
   }, []);
 
   useEffect(() => {
