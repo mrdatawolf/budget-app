@@ -59,6 +59,9 @@ export default function SupabaseSyncPanel() {
   const [resolvingIds, setResolvingIds] = useState<Set<number>>(new Set());
   const [bulkResolving, setBulkResolving] = useState(false);
 
+  const addResolvingId = (id: number) => setResolvingIds(prev => new Set(prev).add(id));
+  const removeResolvingId = (id: number) => setResolvingIds(prev => { const next = new Set(prev); next.delete(id); return next; });
+
   const fetchConfig = useCallback(async () => {
     try {
       const data = await api.supabase.getConfig();
@@ -209,7 +212,7 @@ export default function SupabaseSyncPanel() {
   };
 
   const handleResolveConflict = async (changelogId: number, strategy: 'keep-local' | 'use-remote' | 'discard') => {
-    setResolvingIds(prev => new Set(prev).add(changelogId));
+    addResolvingId(changelogId);
     try {
       const result = await api.supabase.resolveConflict(changelogId, strategy);
       if (result.success) {
@@ -220,11 +223,7 @@ export default function SupabaseSyncPanel() {
     } catch (error) {
       toast.error('Failed to resolve conflict');
     } finally {
-      setResolvingIds(prev => {
-        const next = new Set(prev);
-        next.delete(changelogId);
-        return next;
-      });
+      removeResolvingId(changelogId);
     }
   };
 
@@ -235,7 +234,7 @@ export default function SupabaseSyncPanel() {
     let failed = 0;
 
     for (const conflict of conflicts) {
-      setResolvingIds(prev => new Set(prev).add(conflict.changelogId));
+      addResolvingId(conflict.changelogId);
       try {
         const result = await api.supabase.resolveConflict(conflict.changelogId, strategy);
         if (result.success) succeeded++;
@@ -243,11 +242,7 @@ export default function SupabaseSyncPanel() {
       } catch {
         failed++;
       } finally {
-        setResolvingIds(prev => {
-          const next = new Set(prev);
-          next.delete(conflict.changelogId);
-          return next;
-        });
+        removeResolvingId(conflict.changelogId);
       }
     }
 

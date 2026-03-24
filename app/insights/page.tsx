@@ -10,7 +10,7 @@ import SpendingTrendsChart from '@/components/charts/SpendingTrendsChart';
 import FlowDiagram from '@/components/charts/FlowDiagram';
 import { Budget } from '@/types/budget';
 import { transformDbBudgetToAppBudget } from '@/lib/budgetHelpers';
-import { api, IncomeAllocation } from '@/lib/api-client';
+import { api, IncomeAllocation, fetchAllLinkedAccounts } from '@/lib/api-client';
 import type { PaymentMethodAccount } from '@/lib/chartHelpers';
 
 export default function InsightsPageWrapper() {
@@ -72,14 +72,8 @@ function InsightsPage() {
   }, []);
 
   const fetchLinkedAccounts = useCallback(async () => {
-    const results = await Promise.allSettled([
-      api.teller.listAccounts(),
-      api.csv.listAccounts(),
-    ]);
-    const tellerAccounts = results[0].status === 'fulfilled' ? results[0].value as any[] : [];
-    const csvAccounts = results[1].status === 'fulfilled' ? results[1].value as any[] : [];
-    const all = [...tellerAccounts, ...csvAccounts];
-    setLinkedAccounts(all.map((a: any) => ({
+    const accounts = await fetchAllLinkedAccounts();
+    setLinkedAccounts(accounts.map(a => ({
       id: a.id,
       accountName: a.accountName,
       accountType: a.accountType,

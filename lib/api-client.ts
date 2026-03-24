@@ -15,6 +15,7 @@ import type {
   RecurringPayment,
   CategoryType,
   RecurringFrequency,
+  LinkedAccount,
 } from '@/types/budget';
 
 // API Error class for structured error handling
@@ -962,6 +963,19 @@ export const creditCardApi = {
  * Usage: import { api } from '@/lib/api-client';
  *        await api.budget.get(0, 2026);
  */
+/**
+ * Fetch all linked accounts (Teller + CSV) with graceful failure handling.
+ */
+export async function fetchAllLinkedAccounts(): Promise<LinkedAccount[]> {
+  const results = await Promise.allSettled([
+    tellerApi.listAccounts(),
+    csvApi.listAccounts(),
+  ]);
+  const tellerAccounts = results[0].status === 'fulfilled' ? results[0].value : [];
+  const csvAccounts = results[1].status === 'fulfilled' ? results[1].value : [];
+  return [...tellerAccounts, ...csvAccounts] as LinkedAccount[];
+}
+
 export const api = {
   budget: budgetApi,
   category: categoryApi,
